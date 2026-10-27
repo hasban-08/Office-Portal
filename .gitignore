@@ -1,0 +1,20 @@
+# Dependencies
+node_modules/
+server/node_modules/
+web/node_modules/
+
+# Environment variables & secrets
+.env
+server/.env
+web/.env
+.env.local
+
+# Local Database Data & Build folders
+server/pgdata/
+web/build/
+dist/
+
+# Logs & OS files
+npm-debug.log*
+.DS_Store
+Thumbs.db
