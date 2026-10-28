@@ -7,7 +7,6 @@ function Signup() {
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState("employee");
   const [submitting, setSubmitting] = useState(false);
   const navigate = useNavigate();
 
@@ -23,7 +22,6 @@ function Signup() {
         name: username.trim(),
         email: email.trim(),
         password,
-        role,
       });
 
       alert("Account Created Successfully! Please complete your profile.");
@@ -66,16 +64,6 @@ function Signup() {
           onChange={(e) => setPassword(e.target.value)}
           required
         />
-        <br /><br />
-        <select
-          className="signup-input"
-          value={role}
-          onChange={(e) => setRole(e.target.value)}
-          style={{ cursor: "pointer" }}
-        >
-          <option value="employee">Role: Employee</option>
-          <option value="admin">Role: Admin</option>
-        </select>
         <br />
         <p
           className="login-forgot"

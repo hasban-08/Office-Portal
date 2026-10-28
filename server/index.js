@@ -185,7 +185,7 @@ app.post("/api/settings/smtp", authMiddleware, async (req, res) => {
 // ---------------------------------------------------------
 app.post("/api/auth/signup", async (req, res) => {
   try {
-    const { name, email, password, role } = req.body;
+    const { name, email, password } = req.body;
     const cleanEmail = String(email || "").trim().toLowerCase();
     const cleanName = String(name || "").trim() || cleanEmail.split("@")[0] || "Employee";
 
@@ -202,8 +202,7 @@ app.post("/api/auth/signup", async (req, res) => {
 
     const countRes = await query("SELECT COUNT(*) AS cnt FROM users");
     const isFirstUser = Number(countRes.rows[0]?.cnt || 0) === 0;
-    const assignedRole =
-      role === "admin" || isFirstUser ? "admin" : "employee";
+    const assignedRole = isFirstUser ? "admin" : "employee";
 
     const uid = crypto.randomUUID();
     const passwordHash = await bcrypt.hash(String(password), 10);
@@ -255,6 +254,12 @@ app.post("/api/auth/login", async (req, res) => {
     const match = await bcrypt.compare(String(password), row.password_hash);
     if (!match) {
       return res.status(401).json({ error: "Invalid email or password." });
+    }
+
+    if (row.is_active === false) {
+      return res.status(403).json({
+        error: "Aap ka account deactivate hai. Portal access band kar diya gaya hai.",
+      });
     }
 
     const userObj = mapUserRow(row);
@@ -413,6 +418,10 @@ app.put("/api/users/:uid", authMiddleware, async (req, res) => {
       !isLockedForEmployee && body.schedule !== undefined
         ? body.schedule
         : current.schedule;
+    const isActive =
+      !isLockedForEmployee && body.isActive !== undefined
+        ? Boolean(body.isActive)
+        : current.isActive;
 
     const updateRes = await query(
       `UPDATE users
@@ -434,8 +443,9 @@ app.put("/api/users/:uid", authMiddleware, async (req, res) => {
            emergency_relation = $16,
            emergency_phone = $17,
            schedule = $18::jsonb,
-           photo_url = $19
-       WHERE uid = $20
+           photo_url = $19,
+           is_active = $20
+       WHERE uid = $21
        RETURNING *`,
       [
         name,
@@ -457,6 +467,7 @@ app.put("/api/users/:uid", authMiddleware, async (req, res) => {
         emergencyContact.phone || "",
         JSON.stringify(schedule || DEFAULT_SCHEDULE),
         photoUrl || "",
+        isActive,
         uid,
       ]
     );

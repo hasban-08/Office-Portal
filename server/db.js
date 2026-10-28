@@ -89,8 +89,13 @@ async function initDb() {
       emergency_phone TEXT DEFAULT '',
       schedule JSONB NOT NULL DEFAULT '{"sun":"","mon":"10:00","tue":"10:00","wed":"10:00","thu":"10:00","fri":"10:00","sat":""}'::jsonb,
       photo_url TEXT DEFAULT '',
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+  `);
+
+  await query(`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;
   `);
 
   await query(`
@@ -156,6 +161,7 @@ function mapUserRow(row) {
     fullName: row.full_name || row.name || "",
     email: row.email,
     role: row.role || "employee",
+    isActive: row.is_active !== false,
     salary: Number(row.salary) || 0,
     profileComplete: Boolean(row.profile_complete),
     photoURL: row.photo_url || "",
