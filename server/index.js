@@ -33,6 +33,27 @@ const JWT_SECRET = process.env.JWT_SECRET || "office_portal_super_secret_jwt_key
 app.use(cors());
 app.use(express.json({ limit: "10mb" }));
 
+// Ensure DB tables exist (cached across requests for Vercel serverless & local)
+let dbInitPromise = null;
+function ensureDbInitialized() {
+  if (!dbInitPromise) {
+    dbInitPromise = initDb().catch((err) => {
+      dbInitPromise = null;
+      throw err;
+    });
+  }
+  return dbInitPromise;
+}
+
+app.use(async (req, res, next) => {
+  try {
+    await ensureDbInitialized();
+    next();
+  } catch (err) {
+    res.status(500).json({ error: "Database initialization failed: " + err.message });
+  }
+});
+
 // Helper for attendance calculation (matches frontend attendanceHelpers.js)
 const WEEKDAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
 const GRACE_MINUTES = 20;
@@ -741,14 +762,18 @@ app.delete("/api/announcements/:id", authMiddleware, async (req, res) => {
   }
 });
 
-// Start Server
-initDb()
-  .then(() => {
-    app.listen(PORT, "0.0.0.0", () => {
-      console.log(`🚀 Office Portal PostgreSQL Backend running on http://0.0.0.0:${PORT}`);
+// Start Server locally if not running on Vercel serverless
+if (!process.env.VERCEL) {
+  ensureDbInitialized()
+    .then(() => {
+      app.listen(PORT, "0.0.0.0", () => {
+        console.log(`🚀 Office Portal PostgreSQL Backend running on http://0.0.0.0:${PORT}`);
+      });
+    })
+    .catch((err) => {
+      console.error("❌ Failed to initialize database:", err);
+      process.exit(1);
     });
-  })
-  .catch((err) => {
-    console.error("❌ Failed to initialize database:", err);
-    process.exit(1);
-  });
+}
+
+module.exports = app;
