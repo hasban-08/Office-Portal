@@ -65,22 +65,6 @@ function ProfileGate({ children }) {
             textAlign: "center",
           }}
         >
-          <div
-            style={{
-              width: "64px",
-              height: "64px",
-              borderRadius: "50%",
-              background: "rgba(239, 68, 68, 0.2)",
-              color: "#f87171",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: "28px",
-              margin: "0 auto 16px",
-            }}
-          >
-            🚫
-          </div>
           <h2 style={{ margin: "0 0 10px", color: "#fca5a5" }}>
             Account Deactivated
           </h2>

@@ -418,20 +418,28 @@ export async function exportEmployeeSalarySlipPDF({ employee, stats, month }) {
   await ensureLogoLoaded();
   const policies = getActivePolicies();
 
-  const latesPerOff = stats?.latesPerOff ?? policies.latesPerOff;
-  const extremeLatesPerOff =
-    stats?.extremeLatesPerOff ?? policies.extremeLatesPerOff;
-  const earlyLeavesPerOff =
-    stats?.earlyLeavesPerOff ?? policies.earlyLeavesPerOff;
-  const freeOffsAllowed = stats?.freeOffsAllowed ?? policies.freeOffsPerMonth;
-  const graceMinutes = stats?.graceMinutes ?? policies.graceMinutes;
+  const latesPerOff = Number(stats?.latesPerOff ?? policies.latesPerOff);
+  const extremeLatesPerOff = Number(
+    stats?.extremeLatesPerOff ?? policies.extremeLatesPerOff
+  );
+  const earlyLeavesPerOff = Number(
+    stats?.earlyLeavesPerOff ?? policies.earlyLeavesPerOff
+  );
+  const freeOffsAllowed = Number(
+    stats?.freeOffsAllowed ?? policies.freeOffsPerMonth
+  );
+  const graceMinutes = Number(stats?.graceMinutes ?? policies.graceMinutes);
   const extremeWindow =
     graceMinutes +
-    (stats?.extremeLateAfterGraceMinutes ??
-      policies.extremeLateAfterGraceMinutes);
+    Number(
+      stats?.extremeLateAfterGraceMinutes ??
+        policies.extremeLateAfterGraceMinutes
+    );
   const offFromExtremeLates =
     stats?.offFromExtremeLates ??
-    Math.floor((stats?.extremeLateCount ?? 0) / extremeLatesPerOff);
+    (extremeLatesPerOff > 0
+      ? Math.floor((stats?.extremeLateCount ?? 0) / extremeLatesPerOff)
+      : 0);
 
   const pdfDoc = new jsPDF({
     orientation: "portrait",
@@ -511,31 +519,35 @@ export async function exportEmployeeSalarySlipPDF({ employee, stats, month }) {
       [
         `Late Arrivals (> ${graceMinutes}m grace)`,
         stats.lateCount ?? 0,
-        `${latesPerOff} Lates = 1 Off`,
+        latesPerOff > 0 ? `${latesPerOff} Lates = 1 Off` : "No Off Counted",
         `${stats.offFromLates ?? 0} Off(s)`,
       ],
       [
         `Extreme Late Arrivals (> ${extremeWindow}m)`,
         stats.extremeLateCount ?? 0,
-        `${extremeLatesPerOff} Extreme Late(s) = 1 Off`,
+        extremeLatesPerOff > 0
+          ? `${extremeLatesPerOff} Extreme Late(s) = 1 Off`
+          : "No Off Counted",
         `${offFromExtremeLates} Off(s)`,
       ],
       [
         "Early Leaves (Approved)",
         stats.earlyLeaveCount ?? 0,
-        `${earlyLeavesPerOff} Early Leaves = 1 Off`,
+        earlyLeavesPerOff > 0
+          ? `${earlyLeavesPerOff} Early Leaves = 1 Off`
+          : "No Off Counted",
         `${stats.offFromEarlyLeaves ?? 0} Off(s)`,
       ],
       [
         "Unapproved Absences (Offs)",
         stats.absentCount ?? 0,
-        "1 Absent = 1 Off",
+        "1 Absent = 1 Off (Sunday Off)",
         `${stats.absentCount ?? 0} Off(s)`,
       ],
       [
-        "Approved Full-Day Leaves",
-        stats.approvedLeaveCount ?? 0,
-        "Approved by Admin",
+        "Approved Leaves / Official Holidays",
+        (stats.approvedLeaveCount ?? 0) + (stats.officialHolidayCount ?? 0),
+        "Approved by Admin / Company Off",
         "0 Offs (Exempt)",
       ],
     ],

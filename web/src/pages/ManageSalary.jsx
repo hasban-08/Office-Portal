@@ -5,6 +5,7 @@ import {
   fetchAttendance,
   fetchLeaves,
   fetchPolicies,
+  fetchHolidays,
   updateUserById,
 } from "../api";
 import {
@@ -54,11 +55,12 @@ function ManageSalary() {
       setError("");
 
       try {
-        const [emps, allMonthAtt, allApprovedLeaves, activePolicies] = await Promise.all([
+        const [emps, allMonthAtt, allApprovedLeaves, activePolicies, holidayList] = await Promise.all([
           fetchUsers(),
           fetchAttendance({ month: selectedMonth }),
           fetchLeaves({ status: "approved" }),
           fetchPolicies().catch(() => null),
+          fetchHolidays().catch(() => []),
         ]);
 
         if (cancelled) return;
@@ -88,6 +90,7 @@ function ManageSalary() {
             month: selectedMonth,
             approvedLeaves: leavesByUid[emp.uid] || [],
             policies: activePolicies,
+            holidays: holidayList,
           });
         }
 
@@ -219,7 +222,7 @@ function ManageSalary() {
     <div className="salary-page">
       <header className="salary-topbar">
         <div className="salary-identity">
-          <div className="salary-avatar">₨</div>
+          <div className="salary-avatar">S</div>
 
           <div className="salary-identity-text">
             <span className="salary-name">Salaries & Monthly Payroll</span>
@@ -287,7 +290,7 @@ function ManageSalary() {
                 )
               }
             >
-              📄 Export Full Payroll PDF (with Logo)
+              Export Full Payroll PDF
             </button>
             <button
               className="salary-payroll-export-btn"
@@ -298,7 +301,7 @@ function ManageSalary() {
                 )
               }
             >
-              📊 Export Payroll Excel
+              Export Payroll Excel
             </button>
             <button
               className="salary-payroll-export-btn"
@@ -309,7 +312,7 @@ function ManageSalary() {
                 )
               }
             >
-              📋 Export Payroll CSV
+              Export Payroll CSV
             </button>
           </div>
         )}
@@ -370,7 +373,7 @@ function ManageSalary() {
                       })
                     }
                   >
-                    📄 Download {displayNameFor(selectedEmp)}'s Salary Slip PDF
+                    Download {displayNameFor(selectedEmp)}'s Salary Slip PDF
                   </button>
                 </div>
 
@@ -403,7 +406,7 @@ function ManageSalary() {
 
                   <div className="salary-breakdown-row">
                     <span>
-                      Late & Extreme Late ({selectedStats.lateCount ?? 0} late [{selectedStats.latesPerOff ?? 3}=1] = {selectedStats.offFromLates ?? 0} off, {selectedStats.extremeLateCount ?? 0} extreme late = {selectedStats.offFromExtremeLates ?? selectedStats.extremeLateCount ?? 0} off)
+                      Late & Extreme Late ({selectedStats.lateCount ?? 0} late = {selectedStats.offFromLates ?? 0} off, {selectedStats.extremeLateCount ?? 0} extreme late = {selectedStats.offFromExtremeLates ?? 0} off)
                     </span>
                     <span style={{ color: "#f87171" }}>
                       - Rs. {Math.round(selectedStats.lateDeductionGross ?? 0).toLocaleString()}
@@ -412,7 +415,7 @@ function ManageSalary() {
 
                   <div className="salary-breakdown-row">
                     <span>
-                      Early Leaves ({selectedStats.earlyLeaveCount ?? 0} early [{selectedStats.earlyLeavesPerOff ?? 2}=1] = {selectedStats.offFromEarlyLeaves ?? 0} off)
+                      Early Leaves ({selectedStats.earlyLeaveCount ?? 0} early = {selectedStats.offFromEarlyLeaves ?? 0} off)
                     </span>
                     <span style={{ color: "#f87171" }}>
                       - Rs. {Math.round(selectedStats.earlyLeaveDeductionGross ?? 0).toLocaleString()}
@@ -495,7 +498,7 @@ function ManageSalary() {
                       })
                     }
                   >
-                    📄 Export Salary Slip PDF
+                    Export Salary Slip PDF
                   </button>
                 </div>
               </div>

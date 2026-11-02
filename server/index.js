@@ -16,6 +16,7 @@ const {
   mapLeaveRow,
   mapAnnouncementRow,
   mapPolicyRow,
+  mapHolidayRow,
 } = require("./db");
 
 const {
@@ -830,15 +831,15 @@ app.put("/api/policies", authMiddleware, async (req, res) => {
         : current.extremeLateAfterGraceMinutes;
     const latesPerOff =
       body.latesPerOff !== undefined
-        ? Math.max(1, Number(body.latesPerOff) || 1)
+        ? Math.max(0, Number(body.latesPerOff) || 0)
         : current.latesPerOff;
     const extremeLatesPerOff =
       body.extremeLatesPerOff !== undefined
-        ? Math.max(1, Number(body.extremeLatesPerOff) || 1)
+        ? Math.max(0, Number(body.extremeLatesPerOff) || 0)
         : current.extremeLatesPerOff;
     const earlyLeavesPerOff =
       body.earlyLeavesPerOff !== undefined
-        ? Math.max(1, Number(body.earlyLeavesPerOff) || 1)
+        ? Math.max(0, Number(body.earlyLeavesPerOff) || 0)
         : current.earlyLeavesPerOff;
     const freeOffsPerMonth =
       body.freeOffsPerMonth !== undefined
@@ -904,6 +905,79 @@ app.put("/api/policies", authMiddleware, async (req, res) => {
     res.json({ policy: updatedPolicy });
   } catch (err) {
     console.error("Update policy error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ---------------------------------------------------------
+// OFFICIAL HOLIDAYS / ADMIN DECLARED OFF DAYS ROUTES
+// ---------------------------------------------------------
+app.get("/api/holidays", async (req, res) => {
+  try {
+    const r = await query("SELECT * FROM company_holidays ORDER BY date DESC");
+    res.json({ holidays: r.rows.map(mapHolidayRow) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/holidays", authMiddleware, async (req, res) => {
+  try {
+    const callerRes = await query("SELECT role, name FROM users WHERE uid = $1", [
+      req.user.uid,
+    ]);
+    if (callerRes.rows[0]?.role !== "admin") {
+      return res.status(403).json({ error: "Only Admin can declare an official off day." });
+    }
+
+    const { date, reason } = req.body || {};
+    const cleanDate = String(date || "").trim();
+    const cleanReason = String(reason || "").trim();
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(cleanDate) || !cleanReason) {
+      return res.status(400).json({ error: "Valid date (YYYY-MM-DD) and reason are required." });
+    }
+
+    const adminName = callerRes.rows[0]?.name || "Admin";
+    const insertRes = await query(
+      `INSERT INTO company_holidays (date, reason, created_by)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (date) DO UPDATE SET
+         reason = EXCLUDED.reason,
+         created_by = EXCLUDED.created_by,
+         created_at = NOW()
+       RETURNING *`,
+      [cleanDate, cleanReason, adminName]
+    );
+
+    const holiday = mapHolidayRow(insertRes.rows[0]);
+
+    // Also post on Notice Board so all employees see the official off & reason
+    await query(
+      "INSERT INTO announcements (message, author) VALUES ($1, $2)",
+      [`Official Off on ${cleanDate}: ${cleanReason}`, adminName]
+    );
+
+    res.status(201).json({ holiday });
+  } catch (err) {
+    console.error("Create holiday error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete("/api/holidays/:date", authMiddleware, async (req, res) => {
+  try {
+    const callerRes = await query("SELECT role FROM users WHERE uid = $1", [
+      req.user.uid,
+    ]);
+    if (callerRes.rows[0]?.role !== "admin  ") {
+      return res.status(403).json({ error: "Only Admin can remove an official off day." });
+    }
+
+    const { date } = req.params;
+    await query("DELETE FROM company_holidays WHERE date = $1", [date]);
+    res.json({ deleted: true, date });
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });

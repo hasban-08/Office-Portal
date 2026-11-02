@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useState, useEffect } from "react";
-import { onPortalAuthStateChanged, fetchPolicies } from "./api";
+import { onPortalAuthStateChanged, fetchPolicies, fetchHolidays } from "./api";
 
 import Signup from "./pages/Signup";
 import Login from "./pages/Login";
@@ -28,6 +28,7 @@ function App() {
 
   useEffect(() => {
     fetchPolicies().catch(() => {});
+    fetchHolidays().catch(() => {});
     const unsub = onPortalAuthStateChanged((currentUser) => {
       setUser(currentUser);
       setLoading(false);

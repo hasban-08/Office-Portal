@@ -1,4 +1,4 @@
-import { getCachedPolicies } from "../api";
+import { getCachedPolicies, getCachedHolidays } from "../api";
 
 export const WEEKDAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
 
@@ -18,8 +18,8 @@ export const FREE_OFFS_PER_MONTH = 2;
 
 // Rules (Defaults — overridden dynamically by Company Policies from DB)
 export const LATES_PER_OFF = 3;         // default: 3 Late = 1 Off
-export const EXTREME_LATES_PER_OFF = 1; // default: 1 Extreme Late = 1 Off
-export const EARLY_LEAVES_PER_OFF = 2;  // default: 2 Early Leaves = 1 Off
+export const EXTREME_LATES_PER_OFF = 0; // default: 0 (No Off counted on Extreme Late unless set by Admin)
+export const EARLY_LEAVES_PER_OFF = 0;  // default: 0 (No Off counted on Early Leave unless set by Admin)
 
 export function getActivePolicies(override = null) {
   const cached = getCachedPolicies();
@@ -31,14 +31,14 @@ export function getActivePolicies(override = null) {
       0,
       Number(merged.extremeLateAfterGraceMinutes ?? EXTREME_LATE_AFTER_GRACE_MINUTES)
     ),
-    latesPerOff: Math.max(1, Number(merged.latesPerOff ?? LATES_PER_OFF) || 3),
+    latesPerOff: Math.max(0, Number(merged.latesPerOff ?? LATES_PER_OFF)),
     extremeLatesPerOff: Math.max(
-      1,
-      Number(merged.extremeLatesPerOff ?? EXTREME_LATES_PER_OFF) || 1
+      0,
+      Number(merged.extremeLatesPerOff ?? EXTREME_LATES_PER_OFF)
     ),
     earlyLeavesPerOff: Math.max(
-      1,
-      Number(merged.earlyLeavesPerOff ?? EARLY_LEAVES_PER_OFF) || 2
+      0,
+      Number(merged.earlyLeavesPerOff ?? EARLY_LEAVES_PER_OFF)
     ),
     freeOffsPerMonth: Math.max(
       0,
@@ -47,10 +47,29 @@ export function getActivePolicies(override = null) {
   };
 }
 
+export function getActiveHolidayMap(holidaysOverride = null) {
+  const list = Array.isArray(holidaysOverride)
+    ? holidaysOverride
+    : getCachedHolidays();
+  const map = new Map();
+  for (const h of list) {
+    if (h?.date) {
+      map.set(h.date, h.reason || "Official Off");
+    }
+  }
+  return map;
+}
+
 const MAX_LEAVE_RANGE_DAYS = 366;
 
 export function getWeekdayKey(date = new Date()) {
   return WEEKDAY_KEYS[date.getDay()];
+}
+
+export function isScheduledWorkday(schedule, date = new Date()) {
+  const key = getWeekdayKey(date);
+  if (key === "sun") return false; // Sunday is always Weekly Off
+  return Boolean(schedule?.[key]);
 }
 
 export function getLocalDateStr(date = new Date()) {
@@ -152,7 +171,7 @@ export function countWorkingDaysSoFar(schedule, referenceDate = new Date()) {
   for (let day = 1; day <= todayDate; day += 1) {
     const date = new Date(year, month, day);
 
-    if (schedule?.[getWeekdayKey(date)]) {
+    if (isScheduledWorkday(schedule, date)) {
       count += 1;
     }
   }
@@ -172,7 +191,7 @@ export function countWorkingDaysInMonth(
   for (let day = 1; day <= daysInMonth; day += 1) {
     const date = new Date(year, month - 1, day);
 
-    if (schedule?.[getWeekdayKey(date)]) {
+    if (isScheduledWorkday(schedule, date)) {
       count += 1;
     }
   }
@@ -209,7 +228,7 @@ export function getApprovedLeaveDates(schedule, approvedLeaves = []) {
 
         const date = parseLocalDate(dateString);
 
-        if (schedule?.[getWeekdayKey(date)]) {
+        if (isScheduledWorkday(schedule, date)) {
           leaveDates.add(dateString);
         }
       }
@@ -228,7 +247,7 @@ export function getApprovedLeaveDates(schedule, approvedLeaves = []) {
     let guard = 0;
 
     while (cursor <= endDate && guard < MAX_LEAVE_RANGE_DAYS) {
-      if (schedule?.[getWeekdayKey(cursor)]) {
+      if (isScheduledWorkday(schedule, cursor)) {
         leaveDates.add(getLocalDateStr(cursor));
       }
 
@@ -250,7 +269,7 @@ export function getApprovedEarlyLeaveDates(schedule, approvedLeaves = []) {
 
     if (leave.date && isValidDateString(leave.date)) {
       const d = parseLocalDate(leave.date);
-      if (schedule?.[getWeekdayKey(d)]) {
+      if (isScheduledWorkday(schedule, d)) {
         earlyDates.add(getLocalDateStr(d));
       }
     }
@@ -284,7 +303,7 @@ function getScheduledDatesUpTo(schedule, monthStr, referenceDate) {
 
     if (dateStr > referenceStr) break;
 
-    if (schedule?.[getWeekdayKey(date)]) {
+    if (isScheduledWorkday(schedule, date)) {
       dates.push(dateStr);
     }
   }
@@ -292,15 +311,6 @@ function getScheduledDatesUpTo(schedule, monthStr, referenceDate) {
   return dates;
 }
 
-/**
- * Salary policy:
- * - 20-minute grace period
- * - 3 late arrivals = 1 off-equivalent
- * - 2 early leaves = 1 off-equivalent
- * - each extreme-late arrival = 1 off-equivalent
- * - each absence = 1 off-equivalent
- * - 2 free off-equivalents per month
- */
 export function calculateSalaryStats({
   records = [],
   schedule,
@@ -308,8 +318,11 @@ export function calculateSalaryStats({
   month = getLocalMonthStr(),
   approvedLeaves = [],
   policies = null,
+  holidays = null,
 }) {
   const activePolicy = getActivePolicies(policies);
+  const holidayMap = getActiveHolidayMap(holidays);
+  const todayStr = getLocalDateStr();
 
   const monthStr =
     typeof month === "string" && /^\d{4}-\d{2}$/.test(month)
@@ -348,6 +361,7 @@ export function calculateSalaryStats({
   let absentCount = 0;
   let approvedLeaveCount = 0;
   let earlyLeaveCount = 0;
+  let officialHolidayCount = 0;
 
   for (const dateStr of scheduledDates) {
     if (presentDates.has(dateStr)) {
@@ -357,8 +371,19 @@ export function calculateSalaryStats({
       continue;
     }
 
+    // Admin declared official off / holiday -> Exempt (not absent)
+    if (holidayMap.has(dateStr)) {
+      officialHolidayCount += 1;
+      continue;
+    }
+
     if (approvedLeaveDates.has(dateStr)) {
       approvedLeaveCount += 1;
+      continue;
+    }
+
+    // Do NOT count today as an Unapproved Absence while today is still in progress
+    if (dateStr === todayStr) {
       continue;
     }
 
@@ -367,14 +392,19 @@ export function calculateSalaryStats({
 
   const workingDaysSoFar = scheduledDates.length;
 
-  // Dynamic policy calculations
-  const offFromLates = Math.floor(lateCount / activePolicy.latesPerOff);
-  const offFromExtremeLates = Math.floor(
-    extremeLateCount / activePolicy.extremeLatesPerOff
-  );
-  const offFromEarlyLeaves = Math.floor(
-    earlyLeaveCount / activePolicy.earlyLeavesPerOff
-  );
+  // Dynamic policy calculations (if policy value is 0, no off is counted)
+  const offFromLates =
+    activePolicy.latesPerOff > 0
+      ? Math.floor(lateCount / activePolicy.latesPerOff)
+      : 0;
+  const offFromExtremeLates =
+    activePolicy.extremeLatesPerOff > 0
+      ? Math.floor(extremeLateCount / activePolicy.extremeLatesPerOff)
+      : 0;
+  const offFromEarlyLeaves =
+    activePolicy.earlyLeavesPerOff > 0
+      ? Math.floor(earlyLeaveCount / activePolicy.earlyLeavesPerOff)
+      : 0;
 
   // Total off equivalents calculation
   const offEquivalents =
@@ -407,6 +437,7 @@ export function calculateSalaryStats({
     extremeLateCount,
     absentCount,
     approvedLeaveCount,
+    officialHolidayCount,
     earlyLeaveCount,
     offFromLates,
     offFromExtremeLates,

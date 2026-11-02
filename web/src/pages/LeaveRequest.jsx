@@ -100,7 +100,7 @@ function LeaveRequest() {
 
       if (res?.emailStatus?.sent) {
         window.alert(
-          "✅ Request sent! Admin has been notified via email and will review your request."
+          "Request sent! Admin has been notified via email and will review your request."
         );
       } else {
         window.alert(

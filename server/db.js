@@ -149,8 +149,8 @@ async function initDb() {
       grace_minutes INTEGER NOT NULL DEFAULT 20,
       extreme_late_after_grace_minutes INTEGER NOT NULL DEFAULT 30,
       lates_per_off NUMERIC(5, 2) NOT NULL DEFAULT 3,
-      extreme_lates_per_off NUMERIC(5, 2) NOT NULL DEFAULT 1,
-      early_leaves_per_off NUMERIC(5, 2) NOT NULL DEFAULT 2,
+      extreme_lates_per_off NUMERIC(5, 2) NOT NULL DEFAULT 0,
+      early_leaves_per_off NUMERIC(5, 2) NOT NULL DEFAULT 0,
       free_offs_per_month NUMERIC(5, 2) NOT NULL DEFAULT 2,
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
@@ -160,8 +160,25 @@ async function initDb() {
     INSERT INTO company_policies (
       id, company_name, grace_minutes, extreme_late_after_grace_minutes,
       lates_per_off, extreme_lates_per_off, early_leaves_per_off, free_offs_per_month
-    ) VALUES (1, 'The Nexus Group Co', 20, 30, 3, 1, 2, 2)
+    ) VALUES (1, 'The Nexus Group Co', 20, 30, 3, 0, 0, 2)
     ON CONFLICT (id) DO NOTHING;
+  `);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS company_holidays (
+      id SERIAL PRIMARY KEY,
+      date TEXT UNIQUE NOT NULL,
+      reason TEXT NOT NULL,
+      created_by TEXT DEFAULT 'Admin',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  // Ensure Sunday is off by default for all users
+  await query(`
+    UPDATE users
+    SET schedule = jsonb_set(schedule, '{sun}', '""'::jsonb)
+    WHERE schedule->>'sun' IS NOT NULL AND schedule->>'sun' != '';
   `);
 
   console.log(`📦 PostgreSQL tables verified/initialized (mode: ${dbMode})`);
@@ -264,8 +281,8 @@ function mapPolicyRow(row) {
       graceMinutes: 20,
       extremeLateAfterGraceMinutes: 30,
       latesPerOff: 3,
-      extremeLatesPerOff: 1,
-      earlyLeavesPerOff: 2,
+      extremeLatesPerOff: 0,
+      earlyLeavesPerOff: 0,
       freeOffsPerMonth: 2,
     };
   }
@@ -273,11 +290,22 @@ function mapPolicyRow(row) {
     companyName: row.company_name || "The Nexus Group Co",
     graceMinutes: Number(row.grace_minutes ?? 20),
     extremeLateAfterGraceMinutes: Number(row.extreme_late_after_grace_minutes ?? 30),
-    latesPerOff: Number(row.lates_per_off ?? 3) || 3,
-    extremeLatesPerOff: Number(row.extreme_lates_per_off ?? 1) || 1,
-    earlyLeavesPerOff: Number(row.early_leaves_per_off ?? 2) || 2,
-    freeOffsPerMonth: Number(row.free_offs_per_month ?? 2),
+    latesPerOff: Math.max(0, Number(row.lates_per_off ?? 3)),
+    extremeLatesPerOff: Math.max(0, Number(row.extreme_lates_per_off ?? 0)),
+    earlyLeavesPerOff: Math.max(0, Number(row.early_leaves_per_off ?? 0)),
+    freeOffsPerMonth: Math.max(0, Number(row.free_offs_per_month ?? 2)),
     updatedAt: row.updated_at,
+  };
+}
+
+function mapHolidayRow(row) {
+  if (!row) return null;
+  return {
+    id: String(row.id),
+    date: row.date,
+    reason: row.reason || "Official Holiday",
+    createdBy: row.created_by || "Admin",
+    createdAt: row.created_at,
   };
 }
 
@@ -291,4 +319,5 @@ module.exports = {
   mapLeaveRow,
   mapAnnouncementRow,
   mapPolicyRow,
+  mapHolidayRow,
 };

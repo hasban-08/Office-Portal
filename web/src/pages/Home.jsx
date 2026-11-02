@@ -13,6 +13,7 @@ import {
   fetchSmtpSettings,
   saveSmtpSettings,
   fetchPolicies,
+  fetchHolidays,
   apiLogout,
 } from "../api";
 import {
@@ -125,7 +126,7 @@ function Home() {
     const fetchAdminData = async () => {
       setEmpLoading(true);
       try {
-        const [emps, todayAttList, monthAttList, allLeaves, smtpInfo, activePolicies] =
+        const [emps, todayAttList, monthAttList, allLeaves, smtpInfo, activePolicies, holidayList] =
           await Promise.all([
             fetchUsers(),
             fetchAttendance({ date: todayStr }),
@@ -133,6 +134,7 @@ function Home() {
             fetchLeaves(),
             fetchSmtpSettings().catch(() => ({ configured: false })),
             fetchPolicies().catch(() => null),
+            fetchHolidays().catch(() => []),
           ]);
         if (cancelled) return;
 
@@ -183,6 +185,7 @@ function Home() {
             month: currentMonth,
             approvedLeaves: leavesByUid[emp.uid] || [],
             policies: activePolicies,
+            holidays: holidayList,
           });
           statsMap[emp.uid] = empStat;
           payrollSum += empStat.netSalary || 0;
@@ -211,11 +214,12 @@ function Home() {
     const fetchEmployeeStatus = async () => {
       try {
         const uid = userData.uid;
-        const [todayRecs, monthRecs, approvedLeaves, activePolicies] = await Promise.all([
+        const [todayRecs, monthRecs, approvedLeaves, activePolicies, holidayList] = await Promise.all([
           fetchAttendance({ uid, date: todayStr }),
           fetchAttendance({ uid, month: currentMonth }),
           fetchLeaves({ uid, status: "approved" }),
           fetchPolicies().catch(() => null),
+          fetchHolidays().catch(() => []),
         ]);
         if (cancelled) return;
 
@@ -254,6 +258,7 @@ function Home() {
           month: currentMonth,
           approvedLeaves,
           policies: activePolicies,
+          holidays: holidayList,
         });
         setMyMonthStats(computedStats);
       } catch (err) {
@@ -282,13 +287,13 @@ function Home() {
 
       if (emailStatus?.sent) {
         window.alert(
-          `✅ Announcement posted & Email sent to ${emailStatus.recipientsCount || "all"} user(s)!`
+          `Announcement posted & Email sent to ${emailStatus.recipientsCount || "all"} user(s)!`
         );
       } else {
         window.alert(
-          `📢 Announcement posted on Notice Board!\n\n⚠️ Email Notice: ${
+          `Announcement posted on Notice Board!\n\nEmail Notice: ${
             emailStatus?.reason ||
-            "SMTP Email abhi set nahi hai. '⚙️ Email Settings' button par click kar ke apna Gmail aur Google App Password lagayein."
+            "SMTP Email abhi set nahi hai. 'Email Settings' button par click kar ke apna Gmail aur Google App Password lagayein."
           }`
         );
         if (!smtpConfigured) {
@@ -327,13 +332,13 @@ function Home() {
         setSmtpConfigured(true);
         setShowSmtpModal(false);
         window.alert(
-          `✅ Gmail SMTP Connected! Test email aap ke inbox (${
+          `Gmail SMTP Connected! Test email aap ke inbox (${
             smtpForm.testEmail || userData.email
           }) par bhej di gayi hai.`
         );
       } else {
         window.alert(
-          `⚠️ Settings save ho gayin lekin test email fail hui:\n${
+          `Settings save ho gayin lekin test email fail hui:\n${
             res.emailStatus?.reason || res.emailStatus?.error || "Check your Google App Password"
           }\n\nNote: Gmail ka aam password nahi chalta, Google Account -> Security -> 2-Step Verification -> App Passwords se 16-character App Password bana kar dalein.`
         );
@@ -521,15 +526,6 @@ function Home() {
             </div>
           </div>
           <button className="home-logout-btn" onClick={handleLogout}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-              <path
-                d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
             Log out
           </button>
         </div>
@@ -570,15 +566,6 @@ function Home() {
               onClick={() => navigate("/manage-leaves")}
               className="quick-btn"
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                <path
-                  d="M9 12l2 2 4-4M5 4h14v16H5z"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
               Leaves
               {pendingLeavesCount > 0 && (
                 <span className="quick-badge">{pendingLeavesCount}</span>
@@ -588,58 +575,25 @@ function Home() {
               onClick={() => navigate("/daily-attendance")}
               className="quick-btn"
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                <circle
-                  cx="12"
-                  cy="12"
-                  r="9"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                />
-                <path
-                  d="M12 7v5l3 3"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                />
-              </svg>
               Mark Today
             </button>
             <button
               onClick={() => navigate("/manage-salary")}
               className="quick-btn"
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                <rect
-                  x="2"
-                  y="6"
-                  width="20"
-                  height="12"
-                  rx="2"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                />
-                <circle
-                  cx="12"
-                  cy="12"
-                  r="2"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                />
-              </svg>
               Payroll & Slips
             </button>
             <button
               onClick={() => navigate("/employee-status")}
               className="quick-btn"
             >
-              👥 Employee Status
+              Employee Status
             </button>
             <button
               onClick={() => navigate("/company-policies")}
               className="quick-btn"
             >
-              ⚖️ Company Policies
+              Company Policies
             </button>
             <button
               onClick={() => setShowSmtpModal(true)}
@@ -650,7 +604,7 @@ function Home() {
                   : "rgba(251, 191, 36, 0.45)",
               }}
             >
-              📧 {smtpConfigured ? "Email Connected" : "Setup Email Alerts"}
+              {smtpConfigured ? "Email Connected" : "Setup Email Alerts"}
             </button>
           </div>
         )}
@@ -759,7 +713,7 @@ function Home() {
                     onClick={() => setShowSmtpModal(true)}
                     title="Configure Gmail SMTP for Email Notifications"
                   >
-                    ⚙️ Email
+                    Email Settings
                   </button>
                   <button className="add-notice-btn" onClick={handleAddNotice}>
                     + Add
@@ -783,17 +737,6 @@ function Home() {
                     }}
                   >
                     <div style={{ display: "flex", gap: "10px", flex: 1 }}>
-                      <div className="notice-icon">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                          <path
-                            d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2v10z"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                        </svg>
-                      </div>
                       <div className="notice-content">
                         <p>{ann.message}</p>
                         <small>
@@ -815,24 +758,14 @@ function Home() {
                           border: "1px solid rgba(239, 68, 68, 0.4)",
                           color: "#f87171",
                           borderRadius: "7px",
-                          width: "30px",
-                          height: "30px",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
+                          padding: "4px 10px",
+                          fontSize: "11.5px",
+                          fontWeight: 600,
                           cursor: "pointer",
                           flexShrink: 0,
                         }}
                       >
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-                          <path
-                            d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14zM10 11v6M14 11v6"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                        </svg>
+                        Delete
                       </button>
                     )}
                   </div>
@@ -907,14 +840,14 @@ function Home() {
                   cursor: "pointer",
                 }}
               >
-                📄 Download My Salary Slip PDF (with Logo)
+                Download My Salary Slip PDF
               </button>
             </div>
 
             <div className="home-emp-grid">
               <div className="home-emp-card">
                 <div className="home-emp-header">
-                  <span className="home-emp-avatar">₨</span>
+                  <span className="home-emp-avatar">PKR</span>
                   <span className="home-emp-name">Salary Calculation</span>
                 </div>
                 <div className="home-emp-net">
@@ -953,7 +886,7 @@ function Home() {
 
               <div className="home-emp-card">
                 <div className="home-emp-header">
-                  <span className="home-emp-avatar">📅</span>
+                  <span className="home-emp-avatar">ATT</span>
                   <span className="home-emp-name">Lates & Offs Record</span>
                 </div>
                 <div className="home-emp-net">
@@ -972,19 +905,25 @@ function Home() {
                     </span>
                   </div>
                   <div className="home-emp-stat">
-                    <span className="home-emp-stat-label">Lates ({myMonthStats.latesPerOff ?? 3} = 1 Off)</span>
+                    <span className="home-emp-stat-label">
+                      Lates ({Number(myMonthStats.latesPerOff) > 0 ? `${myMonthStats.latesPerOff} = 1 Off` : "No Off"})
+                    </span>
                     <span className="home-emp-stat-value">
                       {myMonthStats.lateCount ?? 0} ({myMonthStats.offFromLates ?? 0} Off)
                     </span>
                   </div>
                   <div className="home-emp-stat">
-                    <span className="home-emp-stat-label">Extreme Lates ({myMonthStats.extremeLatesPerOff ?? 1} = 1 Off)</span>
+                    <span className="home-emp-stat-label">
+                      Extreme Lates ({Number(myMonthStats.extremeLatesPerOff) > 0 ? `${myMonthStats.extremeLatesPerOff} = 1 Off` : "No Off"})
+                    </span>
                     <span className="home-emp-stat-value">
-                      {myMonthStats.extremeLateCount ?? 0} ({myMonthStats.offFromExtremeLates ?? myMonthStats.extremeLateCount ?? 0} Off)
+                      {myMonthStats.extremeLateCount ?? 0} ({myMonthStats.offFromExtremeLates ?? 0} Off)
                     </span>
                   </div>
                   <div className="home-emp-stat">
-                    <span className="home-emp-stat-label">Absents / Early ({myMonthStats.earlyLeavesPerOff ?? 2}=1)</span>
+                    <span className="home-emp-stat-label">
+                      Absents / Early ({Number(myMonthStats.earlyLeavesPerOff) > 0 ? `${myMonthStats.earlyLeavesPerOff}=1` : "No Off"})
+                    </span>
                     <span className="home-emp-stat-value">
                       {myMonthStats.absentCount ?? 0} / {myMonthStats.earlyLeaveCount ?? 0}
                     </span>
@@ -1249,7 +1188,7 @@ function Home() {
               }}
             >
               <h3 style={{ marginTop: 0, marginBottom: "8px", fontSize: "18px" }}>
-                📧 Setup Email Notifications (Gmail SMTP)
+                Setup Email Notifications (Gmail SMTP)
               </h3>
               <p style={{ fontSize: "12.5px", color: "rgba(240,238,255,0.65)", lineHeight: 1.5 }}>
                 Announcement aur Leave Requests ki real emails bhejne ke liye apna{" "}

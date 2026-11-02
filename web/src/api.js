@@ -5,14 +5,15 @@ const API_BASE =
 const TOKEN_KEY = "office_portal_token";
 const USER_KEY = "office_portal_user";
 const POLICY_KEY = "office_portal_policies";
+const HOLIDAYS_KEY = "office_portal_holidays";
 
 export const DEFAULT_POLICIES = {
   companyName: "The Nexus Group Co",
   graceMinutes: 20,
   extremeLateAfterGraceMinutes: 30,
   latesPerOff: 3,
-  extremeLatesPerOff: 1,
-  earlyLeavesPerOff: 2,
+  extremeLatesPerOff: 0,
+  earlyLeavesPerOff: 0,
   freeOffsPerMonth: 2,
 };
 
@@ -36,6 +37,28 @@ export function setCachedPolicies(policy) {
       POLICY_KEY,
       JSON.stringify({ ...DEFAULT_POLICIES, ...policy })
     );
+  } catch {
+    // ignore
+  }
+}
+
+export function getCachedHolidays() {
+  try {
+    const raw = localStorage.getItem(HOLIDAYS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch {
+    // ignore
+  }
+  return [];
+}
+
+export function setCachedHolidays(holidays) {
+  if (!Array.isArray(holidays)) return;
+  try {
+    localStorage.setItem(HOLIDAYS_KEY, JSON.stringify(holidays));
   } catch {
     // ignore
   }
@@ -297,4 +320,31 @@ export async function updatePolicies(payload) {
   const policy = data.policy || DEFAULT_POLICIES;
   setCachedPolicies(policy);
   return policy;
+}
+
+// -----------------------------------------
+// Official Holidays / Admin Declared Off Days API
+// -----------------------------------------
+export async function fetchHolidays() {
+  const data = await apiRequest("/holidays");
+  const holidays = data.holidays || [];
+  setCachedHolidays(holidays);
+  return holidays;
+}
+
+export async function createHoliday({ date, reason }) {
+  const data = await apiRequest("/holidays", {
+    method: "POST",
+    body: JSON.stringify({ date, reason }),
+  });
+  await fetchHolidays().catch(() => {});
+  return data.holiday;
+}
+
+export async function deleteHoliday(date) {
+  const data = await apiRequest(`/holidays/${encodeURIComponent(date)}`, {
+    method: "DELETE",
+  });
+  await fetchHolidays().catch(() => {});
+  return data;
 }

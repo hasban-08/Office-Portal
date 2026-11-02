@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { fetchUsers, fetchAttendance, fetchLeaves } from "../api";
+import { fetchUsers, fetchAttendance, fetchLeaves, fetchHolidays } from "../api";
 import { getLocalMonthStr } from "../utils/attendanceHelpers";
 import { buildMonthRows } from "../utils/monthattendance";
 import {
@@ -37,6 +37,7 @@ function AdminAttendance() {
   const [month, setMonth] = useState(currentMonth);
   const [records, setRecords] = useState([]);
   const [leaves, setLeaves] = useState([]);
+  const [holidays, setHolidays] = useState([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [loadingData, setLoadingData] = useState(false);
   const [error, setError] = useState("");
@@ -72,13 +73,15 @@ function AdminAttendance() {
       setLoadingData(true);
       setError("");
       try {
-        const [attList, leaveList] = await Promise.all([
+        const [attList, leaveList, holidayList] = await Promise.all([
           fetchAttendance({ uid: selectedUid, month }),
           fetchLeaves({ uid: selectedUid, status: "approved" }),
+          fetchHolidays().catch(() => []),
         ]);
         if (cancelled) return;
         setRecords(attList);
         setLeaves(leaveList);
+        setHolidays(holidayList || []);
       } catch (err) {
         if (err?.name !== "AbortError" && !cancelled) setError(err.message);
       } finally {
@@ -97,7 +100,13 @@ function AdminAttendance() {
 
   const { rows, summary } =
     selectedEmp && !loadingData
-      ? buildMonthRows({ month, schedule: selectedEmp.schedule, records, leaves })
+      ? buildMonthRows({
+          month,
+          schedule: selectedEmp.schedule,
+          records,
+          leaves,
+          holidays,
+        })
       : { rows: [], summary: null };
 
   const stats = summary

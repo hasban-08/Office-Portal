@@ -59,7 +59,7 @@ function ManageLeaveRequests() {
 
       await loadRequests();
       if (res?.emailStatus?.sent) {
-        window.alert(`✅ Request ${status} & email notification sent to ${request.employeeEmail}!`);
+        window.alert(`Request ${status} & email notification sent to ${request.employeeEmail}!`);
       }
     } catch (err) {
       setError(err.message || "Could not update this request.");

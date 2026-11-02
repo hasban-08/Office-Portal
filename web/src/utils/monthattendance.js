@@ -1,10 +1,11 @@
 import {
-  getWeekdayKey,
+  isScheduledWorkday,
   getLocalDateStr,
   getLocalMonthStr,
   formatTime12,
   statusLabel,
   getApprovedLeaveDates,
+  getActiveHolidayMap,
 } from "./attendanceHelpers";
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -30,10 +31,17 @@ const emptySummary = () => ({
  * baaqi -> absent
  * Approved early leave kisi bhi din par "note" ban kar aati hai.
  */
-export function buildMonthRows({ month, schedule, records = [], leaves = [] }) {
+export function buildMonthRows({
+  month,
+  schedule,
+  records = [],
+  leaves = [],
+  holidays = null,
+}) {
   const currentMonth = getLocalMonthStr();
   const monthStr = /^\d{4}-\d{2}$/.test(month) ? month : currentMonth;
   const summary = emptySummary();
+  const holidayMap = getActiveHolidayMap(holidays);
 
   if (monthStr > currentMonth) return { rows: [], summary };
 
@@ -62,12 +70,14 @@ export function buildMonthRows({ month, schedule, records = [], leaves = [] }) {
     const date = new Date(year, mon - 1, day);
     const dateStr = `${monthStr}-${String(day).padStart(2, "0")}`;
     const record = recordByDate[dateStr];
-    const isScheduled = !!schedule?.[getWeekdayKey(date)];
+    const isScheduled = isScheduledWorkday(schedule, date);
     const early = earlyByDate[dateStr];
+    const holidayReason = holidayMap.get(dateStr);
 
     let kind;
     let label;
     let time = null;
+    let note = "";
 
     if (record) {
       kind = record.status || "on-time";
@@ -77,13 +87,17 @@ export function buildMonthRows({ month, schedule, records = [], leaves = [] }) {
       if (kind === "late") summary.late += 1;
       else if (kind === "extreme-late") summary.extremeLate += 1;
       else summary.onTime += 1;
+    } else if (holidayReason) {
+      kind = "off";
+      label = "Official Off";
+      note = `Admin Off: ${holidayReason}`;
     } else if (leaveDates.has(dateStr)) {
       kind = "leave";
       label = "On leave";
       summary.leave += 1;
     } else if (!isScheduled) {
       kind = "off";
-      label = "Day off";
+      label = date.getDay() === 0 ? "Sunday Off" : "Day off";
     } else if (dateStr === todayStr) {
       kind = "pending";
       label = "Not checked in yet";
@@ -93,10 +107,10 @@ export function buildMonthRows({ month, schedule, records = [], leaves = [] }) {
       summary.absent += 1;
     }
 
-    let note = "";
     if (early) {
       summary.early += 1;
-      note = `Early leave approved (${formatHM12(early.earlyLeaveTime)})`;
+      const earlyText = `Early leave approved (${formatHM12(early.earlyLeaveTime)})`;
+      note = note ? `${note} | ${earlyText}` : earlyText;
     }
 
     rows.push({ date: dateStr, day: DAY_NAMES[date.getDay()], kind, label, time, note });

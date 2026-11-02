@@ -325,7 +325,7 @@ function CompleteProfile() {
               color: "#e9d5ff",
             }}
           >
-            🔒 Sensitive details (CNIC, DOB, Bank Details & Emergency Contact) are locked after initial submission. You can update your Profile Picture, Name, Phone, and Address anytime. Contact Admin to modify locked fields.
+            Sensitive details (CNIC, DOB, Bank Details & Emergency Contact) are locked after initial submission. You can update your Profile Picture, Name, Phone, and Address anytime. Contact Admin to modify locked fields.
           </div>
         )}
 
@@ -400,7 +400,7 @@ function CompleteProfile() {
                   margin: 0,
                 }}
               >
-                📷 Choose Photo
+                Choose Photo
                 <input
                   type="file"
                   accept="image/*"
@@ -441,7 +441,7 @@ function CompleteProfile() {
             {errors.fullName && <span className="cp-error">{errors.fullName}</span>}
           </label>
           <label>
-            CNIC {isLockedForEmployee && "🔒 (Admin Only)"}
+            CNIC {isLockedForEmployee && "(Admin Only)"}
             <input
               inputMode="numeric"
               placeholder="XXXXX-XXXXXXX-X"
@@ -453,7 +453,7 @@ function CompleteProfile() {
             {errors.cnic && <span className="cp-error">{errors.cnic}</span>}
           </label>
           <label>
-            Date of Birth {isLockedForEmployee && "🔒 (Admin Only)"}
+            Date of Birth {isLockedForEmployee && "(Admin Only)"}
             <input
               type="date"
               min="1930-01-01"
@@ -487,7 +487,7 @@ function CompleteProfile() {
 
         {/* ── PAYMENT / BANK DETAILS ── */}
         <h2 className="cp-section-title">
-          Payment & Bank Details {isLockedForEmployee && "🔒 (Admin Only)"}
+          Payment & Bank Details {isLockedForEmployee && "(Admin Only)"}
         </h2>
         <div className="cp-fields">
           <label>
@@ -557,7 +557,7 @@ function CompleteProfile() {
 
         {/* ── EMERGENCY CONTACT ── */}
         <h2 className="cp-section-title">
-          Emergency Contact {isLockedForEmployee && "🔒 (Admin Only)"}
+          Emergency Contact {isLockedForEmployee && "(Admin Only)"}
         </h2>
         <p className="cp-note">
           Parent, sibling ya koi family member jise office zaroorat par contact kar sake.

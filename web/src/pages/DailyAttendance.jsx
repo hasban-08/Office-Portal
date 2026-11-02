@@ -5,6 +5,9 @@ import {
   fetchUsers,
   fetchAttendance,
   fetchLeaves,
+  fetchHolidays,
+  createHoliday,
+  deleteHoliday,
   markEmployeeAttendance,
 } from "../api";
 import {
@@ -17,10 +20,12 @@ import {
   formatTime12,
   statusLabel,
   getWeekdayKey,
+  isScheduledWorkday,
   getLocalDateStr,
   getLocalMonthStr,
   calculateAttendanceStatus,
   getApprovedLeaveDates,
+  getActiveHolidayMap,
 } from "../utils/attendanceHelpers";
 import "./css/DailyAttendance.css";
 import { formatHM12 } from "../utils/monthattendance";
@@ -49,6 +54,7 @@ function DailyAttendance() {
   const [employees, setEmployees] = useState([]);
   const [attByUid, setAttByUid] = useState({});
   const [leavesByUid, setLeavesByUid] = useState({});
+  const [holidays, setHolidays] = useState([]);
   const [loading, setLoading] = useState(true);
   const [busyUid, setBusyUid] = useState(null);
   const [error, setError] = useState("");
@@ -65,14 +71,16 @@ function DailyAttendance() {
       setLoading(true);
       setError("");
       try {
-        const [usersList, attList, leaveList] = await Promise.all([
+        const [usersList, attList, leaveList, holidayList] = await Promise.all([
           fetchUsers(),
           fetchAttendance({ date: selectedDate }),
           fetchLeaves({ status: "approved" }),
+          fetchHolidays().catch(() => []),
         ]);
         if (cancelled) return;
 
         setEmployees(usersList);
+        setHolidays(holidayList || []);
 
         const att = {};
         attList.forEach((r) => {
@@ -128,12 +136,41 @@ function DailyAttendance() {
     }
   };
 
-  const weekdayKey = getWeekdayKey(new Date(selectedDate + "T00:00:00"));
+  const selectedDateObj = new Date(selectedDate + "T00:00:00");
+  const weekdayKey = getWeekdayKey(selectedDateObj);
+  const holidayMap = getActiveHolidayMap(holidays);
+  const selectedHolidayReason = holidayMap.get(selectedDate);
   const now = new Date();
+
+  const handleToggleDateOff = async () => {
+    if (selectedHolidayReason) {
+      if (!window.confirm(`Remove official off for ${selectedDate}?`)) return;
+      try {
+        await deleteHoliday(selectedDate);
+        const list = await fetchHolidays();
+        setHolidays(list);
+      } catch (err) {
+        window.alert(err.message);
+      }
+    } else {
+      const reason = window.prompt(
+        `Declare Official Off for all employees on ${selectedDate}.\nChutti ki wajah (reason) likhein:`
+      );
+      if (!reason || !reason.trim()) return;
+      try {
+        await createHoliday({ date: selectedDate, reason: reason.trim() });
+        const list = await fetchHolidays();
+        setHolidays(list);
+        window.alert(`Official Off declared for ${selectedDate}: ${reason.trim()}`);
+      } catch (err) {
+        window.alert(err.message);
+      }
+    }
+  };
 
   const rows = employees.map((emp) => {
     const record = attByUid[emp.uid];
-    const isScheduled = !!emp.schedule?.[weekdayKey];
+    const isScheduled = isScheduledWorkday(emp.schedule, selectedDateObj);
     const onLeave = getApprovedLeaveDates(emp.schedule, leavesByUid[emp.uid] || []).has(selectedDate);
 
     const base = {
@@ -160,16 +197,32 @@ function DailyAttendance() {
       };
     }
 
+    if (selectedHolidayReason) {
+      return {
+        ...base,
+        displayStatus: `Official Off (${selectedHolidayReason})`,
+        statusKind: "off",
+      };
+    }
+
     if (onLeave) {
       return { ...base, displayStatus: "On leave", statusKind: "leave" };
     }
 
     if (selectedDate > todayStr) {
-      return { ...base, displayStatus: isScheduled ? "Upcoming" : "Day off", statusKind: "off" };
+      return {
+        ...base,
+        displayStatus: isScheduled ? "Upcoming" : weekdayKey === "sun" ? "Sunday Off" : "Day off",
+        statusKind: "off",
+      };
     }
 
     if (!isScheduled) {
-      return { ...base, displayStatus: "Day off", statusKind: "off" };
+      return {
+        ...base,
+        displayStatus: weekdayKey === "sun" ? "Sunday Off" : "Day off",
+        statusKind: "off",
+      };
     }
 
     if (isToday) {
@@ -254,13 +307,37 @@ function DailyAttendance() {
           </div>
         )}
 
-        <div className="daily-controls">
-          <input
-            type="date"
-            className="daily-date-input"
-            value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value || todayStr)}
-          />
+        <div className="daily-controls" style={{ flexWrap: "wrap", gap: "10px" }}>
+          <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+            <input
+              type="date"
+              className="daily-date-input"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value || todayStr)}
+            />
+            <button
+              type="button"
+              onClick={handleToggleDateOff}
+              style={{
+                background: selectedHolidayReason
+                  ? "rgba(239, 68, 68, 0.18)"
+                  : "rgba(109, 58, 255, 0.22)",
+                border: selectedHolidayReason
+                  ? "1px solid rgba(239, 68, 68, 0.45)"
+                  : "1px solid rgba(167, 139, 250, 0.45)",
+                color: selectedHolidayReason ? "#fca5a5" : "#e9d5ff",
+                padding: "8px 14px",
+                borderRadius: "8px",
+                fontSize: "12.5px",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              {selectedHolidayReason
+                ? `Cancel Official Off (${selectedHolidayReason})`
+                : `Declare Official Off for ${selectedDate}`}
+            </button>
+          </div>
           {rows.length > 0 && (
             <div className="daily-export-bar">
               <button onClick={() => exportDailyToCSV(exportRows, `daily-attendance-${selectedDate}`)}>CSV</button>
