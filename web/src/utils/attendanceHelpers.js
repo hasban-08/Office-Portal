@@ -1,3 +1,5 @@
+import { getCachedPolicies } from "../api";
+
 export const WEEKDAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
 
 export const WEEKDAY_LABELS = {
@@ -14,9 +16,36 @@ export const GRACE_MINUTES = 20;
 export const EXTREME_LATE_AFTER_GRACE_MINUTES = 30;
 export const FREE_OFFS_PER_MONTH = 2;
 
-// Rules
-export const LATES_PER_OFF = 3;         // 3 Late = 1 Off
-export const EARLY_LEAVES_PER_OFF = 2;  // 2 Early Leaves = 1 Off
+// Rules (Defaults — overridden dynamically by Company Policies from DB)
+export const LATES_PER_OFF = 3;         // default: 3 Late = 1 Off
+export const EXTREME_LATES_PER_OFF = 1; // default: 1 Extreme Late = 1 Off
+export const EARLY_LEAVES_PER_OFF = 2;  // default: 2 Early Leaves = 1 Off
+
+export function getActivePolicies(override = null) {
+  const cached = getCachedPolicies();
+  const merged = { ...cached, ...(override || {}) };
+  return {
+    companyName: merged.companyName || "The Nexus Group Co",
+    graceMinutes: Math.max(0, Number(merged.graceMinutes ?? GRACE_MINUTES)),
+    extremeLateAfterGraceMinutes: Math.max(
+      0,
+      Number(merged.extremeLateAfterGraceMinutes ?? EXTREME_LATE_AFTER_GRACE_MINUTES)
+    ),
+    latesPerOff: Math.max(1, Number(merged.latesPerOff ?? LATES_PER_OFF) || 3),
+    extremeLatesPerOff: Math.max(
+      1,
+      Number(merged.extremeLatesPerOff ?? EXTREME_LATES_PER_OFF) || 1
+    ),
+    earlyLeavesPerOff: Math.max(
+      1,
+      Number(merged.earlyLeavesPerOff ?? EARLY_LEAVES_PER_OFF) || 2
+    ),
+    freeOffsPerMonth: Math.max(
+      0,
+      Number(merged.freeOffsPerMonth ?? FREE_OFFS_PER_MONTH)
+    ),
+  };
+}
 
 const MAX_LEAVE_RANGE_DAYS = 366;
 
@@ -53,8 +82,10 @@ export function formatTime12(date) {
 
 export function calculateAttendanceStatus(
   schedule,
-  checkInDate = new Date()
+  checkInDate = new Date(),
+  policyOverride = null
 ) {
+  const activePolicy = getActivePolicies(policyOverride);
   const weekdayKey = getWeekdayKey(checkInDate);
   const expectedTime = schedule?.[weekdayKey];
 
@@ -72,7 +103,7 @@ export function calculateAttendanceStatus(
   expectedDate.setHours(expH, expM, 0, 0);
 
   const graceDate = new Date(
-    expectedDate.getTime() + GRACE_MINUTES * 60000
+    expectedDate.getTime() + activePolicy.graceMinutes * 60000
   );
 
   if (checkInDate <= graceDate) {
@@ -88,7 +119,7 @@ export function calculateAttendanceStatus(
   );
 
   const status =
-    lateMinutes > EXTREME_LATE_AFTER_GRACE_MINUTES
+    lateMinutes > activePolicy.extremeLateAfterGraceMinutes
       ? "extreme-late"
       : "late";
 
@@ -276,7 +307,10 @@ export function calculateSalaryStats({
   baseSalary = 0,
   month = getLocalMonthStr(),
   approvedLeaves = [],
+  policies = null,
 }) {
+  const activePolicy = getActivePolicies(policies);
+
   const monthStr =
     typeof month === "string" && /^\d{4}-\d{2}$/.test(month)
       ? month
@@ -333,17 +367,23 @@ export function calculateSalaryStats({
 
   const workingDaysSoFar = scheduledDates.length;
 
-  // Lates se deduction (3 Lates = 1 Off)
-  const offFromLates = Math.floor(lateCount / LATES_PER_OFF);
-
-  // Early leaves se deduction (2 Early leaves = 1 Off)
-  const offFromEarlyLeaves = Math.floor(earlyLeaveCount / EARLY_LEAVES_PER_OFF);
+  // Dynamic policy calculations
+  const offFromLates = Math.floor(lateCount / activePolicy.latesPerOff);
+  const offFromExtremeLates = Math.floor(
+    extremeLateCount / activePolicy.extremeLatesPerOff
+  );
+  const offFromEarlyLeaves = Math.floor(
+    earlyLeaveCount / activePolicy.earlyLeavesPerOff
+  );
 
   // Total off equivalents calculation
   const offEquivalents =
-    extremeLateCount + absentCount + offFromLates + offFromEarlyLeaves;
+    offFromExtremeLates + absentCount + offFromLates + offFromEarlyLeaves;
 
-  const deductibleOffs = Math.max(offEquivalents - FREE_OFFS_PER_MONTH, 0);
+  const deductibleOffs = Math.max(
+    offEquivalents - activePolicy.freeOffsPerMonth,
+    0
+  );
 
   const workingDaysInMonth = countWorkingDaysInMonth(schedule, monthStr);
 
@@ -351,10 +391,10 @@ export function calculateSalaryStats({
 
   // Detailed deduction breakdown
   const absentDeductionGross = absentCount * perDayRate;
-  const lateDeductionGross = (offFromLates + extremeLateCount) * perDayRate;
+  const lateDeductionGross = (offFromLates + offFromExtremeLates) * perDayRate;
   const earlyLeaveDeductionGross = offFromEarlyLeaves * perDayRate;
   const freeOffCredit =
-    Math.min(offEquivalents, FREE_OFFS_PER_MONTH) * perDayRate;
+    Math.min(offEquivalents, activePolicy.freeOffsPerMonth) * perDayRate;
 
   const deduction = deductibleOffs * perDayRate;
   const netSalary = Math.max(base - deduction, 0);
@@ -369,9 +409,15 @@ export function calculateSalaryStats({
     approvedLeaveCount,
     earlyLeaveCount,
     offFromLates,
+    offFromExtremeLates,
     offFromEarlyLeaves,
     offEquivalents,
-    freeOffsAllowed: FREE_OFFS_PER_MONTH,
+    freeOffsAllowed: activePolicy.freeOffsPerMonth,
+    latesPerOff: activePolicy.latesPerOff,
+    extremeLatesPerOff: activePolicy.extremeLatesPerOff,
+    earlyLeavesPerOff: activePolicy.earlyLeavesPerOff,
+    graceMinutes: activePolicy.graceMinutes,
+    extremeLateAfterGraceMinutes: activePolicy.extremeLateAfterGraceMinutes,
     deductibleOffs,
     perDayRate,
     absentDeductionGross,

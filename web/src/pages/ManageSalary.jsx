@@ -4,6 +4,7 @@ import {
   fetchUsers,
   fetchAttendance,
   fetchLeaves,
+  fetchPolicies,
   updateUserById,
 } from "../api";
 import {
@@ -53,10 +54,11 @@ function ManageSalary() {
       setError("");
 
       try {
-        const [emps, allMonthAtt, allApprovedLeaves] = await Promise.all([
+        const [emps, allMonthAtt, allApprovedLeaves, activePolicies] = await Promise.all([
           fetchUsers(),
           fetchAttendance({ month: selectedMonth }),
           fetchLeaves({ status: "approved" }),
+          fetchPolicies().catch(() => null),
         ]);
 
         if (cancelled) return;
@@ -85,6 +87,7 @@ function ManageSalary() {
             baseSalary: Number(emp.salary) || 0,
             month: selectedMonth,
             approvedLeaves: leavesByUid[emp.uid] || [],
+            policies: activePolicies,
           });
         }
 
@@ -400,7 +403,7 @@ function ManageSalary() {
 
                   <div className="salary-breakdown-row">
                     <span>
-                      Late & Extreme Late ({selectedStats.lateCount ?? 0} late = {selectedStats.offFromLates ?? 0} off, {selectedStats.extremeLateCount ?? 0} extreme late)
+                      Late & Extreme Late ({selectedStats.lateCount ?? 0} late [{selectedStats.latesPerOff ?? 3}=1] = {selectedStats.offFromLates ?? 0} off, {selectedStats.extremeLateCount ?? 0} extreme late = {selectedStats.offFromExtremeLates ?? selectedStats.extremeLateCount ?? 0} off)
                     </span>
                     <span style={{ color: "#f87171" }}>
                       - Rs. {Math.round(selectedStats.lateDeductionGross ?? 0).toLocaleString()}
@@ -409,7 +412,7 @@ function ManageSalary() {
 
                   <div className="salary-breakdown-row">
                     <span>
-                      Early Leaves ({selectedStats.earlyLeaveCount ?? 0} early = {selectedStats.offFromEarlyLeaves ?? 0} off)
+                      Early Leaves ({selectedStats.earlyLeaveCount ?? 0} early [{selectedStats.earlyLeavesPerOff ?? 2}=1] = {selectedStats.offFromEarlyLeaves ?? 0} off)
                     </span>
                     <span style={{ color: "#f87171" }}>
                       - Rs. {Math.round(selectedStats.earlyLeaveDeductionGross ?? 0).toLocaleString()}
@@ -422,9 +425,9 @@ function ManageSalary() {
                   </div>
 
                   <div className="salary-breakdown-row">
-                    <span>Free offs allowed per month (2 Free Offs Relief)</span>
+                    <span>Free offs allowed per month ({selectedStats.freeOffsAllowed ?? 2} Free Offs Relief)</span>
                     <span style={{ color: "#4ade80" }}>
-                      + Rs. {Math.round(selectedStats.freeOffCredit ?? 0).toLocaleString()} (2 free offs)
+                      + Rs. {Math.round(selectedStats.freeOffCredit ?? 0).toLocaleString()} ({selectedStats.freeOffsAllowed ?? 2} free offs)
                     </span>
                   </div>
 

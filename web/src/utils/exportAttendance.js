@@ -1,47 +1,99 @@
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import { formatTime12, statusLabel } from "./attendanceHelpers";
+import {
+  formatTime12,
+  statusLabel,
+  getActivePolicies,
+} from "./attendanceHelpers";
+
+// -----------------------------------------
+// Preload & Convert /company-logo.webp -> PNG Data URL for jsPDF
+// -----------------------------------------
+let cachedLogoPngDataUrl = null;
+let logoLoadPromise = null;
+
+function ensureLogoLoaded() {
+  if (cachedLogoPngDataUrl) return Promise.resolve(cachedLogoPngDataUrl);
+  if (logoLoadPromise) return logoLoadPromise;
+
+  if (typeof window === "undefined" || typeof Image === "undefined") {
+    return Promise.resolve(null);
+  }
+
+  logoLoadPromise = new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = "Anonymous";
+    img.onload = () => {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = img.naturalWidth || 300;
+        canvas.height = img.naturalHeight || 84;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0);
+        cachedLogoPngDataUrl = canvas.toDataURL("image/png");
+        resolve(cachedLogoPngDataUrl);
+      } catch {
+        resolve(null);
+      }
+    };
+    img.onerror = () => resolve(null);
+    img.src = "/company-logo.webp";
+  });
+
+  return logoLoadPromise;
+}
+
+// Kick off preload immediately in browser
+if (typeof window !== "undefined") {
+  ensureLogoLoaded();
+}
+
+// Theme Colors (Logo-matched Dark Navy/Black & Crisp Monochrome)
+const THEME_DARK = [15, 23, 42];       // #0f172a (Logo dark slate/black)
+const THEME_CHARCOAL = [30, 41, 59];   // #1e293b (Secondary dark header)
+const THEME_LIGHT_ROW = [248, 250, 252]; // #f8fafc
 
 // -----------------------------------------
 // Branded Company Logo Header for PDFs
 // -----------------------------------------
 function drawCompanyHeader(pdfDoc, title, subtitle = "") {
-  // Top brand accent bar
-  pdfDoc.setFillColor(109, 58, 255);
-  pdfDoc.rect(0, 0, pdfDoc.internal.pageSize.getWidth(), 4, "F");
-
-  // Company Logo Emblem (Rounded badge + Geometric icon)
-  pdfDoc.setFillColor(109, 58, 255);
-  pdfDoc.roundedRect(14, 10, 14, 14, 3, 3, "F");
-
-  // Inner layered logo mark
-  pdfDoc.setDrawColor(255, 255, 255);
-  pdfDoc.setLineWidth(0.9);
-  pdfDoc.line(21, 13, 25.5, 15.5);
-  pdfDoc.line(25.5, 15.5, 21, 18);
-  pdfDoc.line(21, 18, 16.5, 15.5);
-  pdfDoc.line(16.5, 15.5, 21, 13);
-
-  pdfDoc.line(16.5, 18, 21, 20.5);
-  pdfDoc.line(21, 20.5, 25.5, 18);
-
-  // Company Name & Tagline
-  pdfDoc.setTextColor(25, 20, 45);
-  pdfDoc.setFont("helvetica", "bold");
-  pdfDoc.setFontSize(14);
-  pdfDoc.text("OFFICE PORTAL", 32, 16);
-
-  pdfDoc.setTextColor(109, 58, 255);
-  pdfDoc.setFont("helvetica", "bold");
-  pdfDoc.setFontSize(8.5);
-  pdfDoc.text("HR, ATTENDANCE & PAYROLL SYSTEM", 32, 21);
-
-  // Right-aligned Generated Date
+  const policies = getActivePolicies();
+  const companyName = (policies.companyName || "THE NEXUS GROUP CO").toUpperCase();
   const pageWidth = pdfDoc.internal.pageSize.getWidth();
-  pdfDoc.setTextColor(100, 116, 139);
-  pdfDoc.setFont("helvetica", "normal");
+
+  // Dark Banner Header so the silver/white + cyan logo pops sharply
+  pdfDoc.setFillColor(...THEME_DARK);
+  pdfDoc.rect(0, 0, pageWidth, 24, "F");
+
+  if (cachedLogoPngDataUrl) {
+    try {
+      // 300x84 aspect ratio -> 46mm x 12.9mm
+      pdfDoc.addImage(cachedLogoPngDataUrl, "PNG", 14, 5.5, 46, 12.9);
+    } catch {
+      pdfDoc.setTextColor(255, 255, 255);
+      pdfDoc.setFont("helvetica", "bold");
+      pdfDoc.setFontSize(13);
+      pdfDoc.text(companyName, 14, 14);
+    }
+  } else {
+    pdfDoc.setTextColor(255, 255, 255);
+    pdfDoc.setFont("helvetica", "bold");
+    pdfDoc.setFontSize(13);
+    pdfDoc.text(companyName, 14, 14);
+  }
+
+  // Right-aligned System Subtitle & Generated Date inside dark header
+  pdfDoc.setTextColor(226, 232, 240);
+  pdfDoc.setFont("helvetica", "bold");
   pdfDoc.setFontSize(8.5);
+  pdfDoc.text("HR, ATTENDANCE & PAYROLL PORTAL", pageWidth - 14, 11, {
+    align: "right",
+  });
+
+  pdfDoc.setTextColor(148, 163, 184);
+  pdfDoc.setFont("helvetica", "normal");
+  pdfDoc.setFontSize(8);
   pdfDoc.text(
     `Generated: ${new Date().toLocaleDateString("en-GB", {
       day: "2-digit",
@@ -49,30 +101,55 @@ function drawCompanyHeader(pdfDoc, title, subtitle = "") {
       year: "numeric",
     })}`,
     pageWidth - 14,
-    16,
+    17,
     { align: "right" }
   );
 
-  // Divider line
-  pdfDoc.setDrawColor(226, 232, 240);
-  pdfDoc.setLineWidth(0.4);
-  pdfDoc.line(14, 27, pageWidth - 14, 27);
-
-  // Document Title & Subtitle
-  pdfDoc.setTextColor(15, 23, 42);
+  // Document Title & Subtitle below banner
+  pdfDoc.setTextColor(...THEME_DARK);
   pdfDoc.setFont("helvetica", "bold");
   pdfDoc.setFontSize(13);
-  pdfDoc.text(title, 14, 34);
+  pdfDoc.text(title, 14, 33);
 
   if (subtitle) {
     pdfDoc.setTextColor(71, 85, 105);
     pdfDoc.setFont("helvetica", "normal");
     pdfDoc.setFontSize(9.5);
-    pdfDoc.text(subtitle, 14, 40);
-    return 45;
+    pdfDoc.text(subtitle, 14, 39);
+
+    pdfDoc.setDrawColor(203, 213, 225);
+    pdfDoc.setLineWidth(0.35);
+    pdfDoc.line(14, 42, pageWidth - 14, 42);
+    return 46;
   }
 
-  return 39;
+  pdfDoc.setDrawColor(203, 213, 225);
+  pdfDoc.setLineWidth(0.35);
+  pdfDoc.line(14, 36, pageWidth - 14, 36);
+  return 40;
+}
+
+// -----------------------------------------
+// Branded Excel Sheet Builder
+// -----------------------------------------
+function createBrandedWorksheet(rows, reportTitle) {
+  const policies = getActivePolicies();
+  const companyName = (policies.companyName || "THE NEXUS GROUP CO").toUpperCase();
+  const generatedStr = new Date().toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+
+  const bannerRows = [
+    [`${companyName} — OFFICIAL REPORT`],
+    [`${reportTitle} (Generated: ${generatedStr})`],
+    [],
+  ];
+
+  const ws = XLSX.utils.aoa_to_sheet(bannerRows);
+  XLSX.utils.sheet_add_json(ws, rows, { origin: "A4", skipHeader: false });
+  return ws;
 }
 
 // -----------------------------------------
@@ -127,7 +204,7 @@ export function exportToExcel(records, filename) {
     };
   });
 
-  const worksheet = XLSX.utils.json_to_sheet(data);
+  const worksheet = createBrandedWorksheet(data, "Attendance Report");
   const workbook = XLSX.utils.book_new();
 
   XLSX.utils.book_append_sheet(workbook, worksheet, "Attendance");
@@ -144,7 +221,7 @@ export function exportDailyToExcel(rows, filename) {
     "Check-in Time": r.time || "—",
   }));
 
-  const worksheet = XLSX.utils.json_to_sheet(data);
+  const worksheet = createBrandedWorksheet(data, "Daily Attendance Report");
   const workbook = XLSX.utils.book_new();
 
   XLSX.utils.book_append_sheet(workbook, worksheet, "Daily Attendance");
@@ -167,7 +244,8 @@ export function exportDailyToCSV(rows, filename) {
   URL.revokeObjectURL(url);
 }
 
-export function exportDailyToPDF(rows, filename, dateLabel) {
+export async function exportDailyToPDF(rows, filename, dateLabel) {
+  await ensureLogoLoaded();
   const pdfDoc = new jsPDF();
   const startY = drawCompanyHeader(
     pdfDoc,
@@ -179,8 +257,9 @@ export function exportDailyToPDF(rows, filename, dateLabel) {
     startY,
     head: [["Employee", "Status", "Check-in Time"]],
     body: rows.map((r) => [r.name, r.displayStatus, r.time || "-"]),
-    styles: { fontSize: 9 },
-    headStyles: { fillColor: [109, 58, 255] },
+    styles: { fontSize: 9, textColor: THEME_DARK },
+    headStyles: { fillColor: THEME_DARK, textColor: 255, fontStyle: "bold" },
+    alternateRowStyles: { fillColor: THEME_LIGHT_ROW },
   });
 
   pdfDoc.save(`${filename}.pdf`);
@@ -214,7 +293,7 @@ export function exportPayrollToExcel(rows, filename) {
     IBAN: r.iban || "—",
   }));
 
-  const worksheet = XLSX.utils.json_to_sheet(data);
+  const worksheet = createBrandedWorksheet(data, "Monthly Payroll Statement");
   const workbook = XLSX.utils.book_new();
 
   XLSX.utils.book_append_sheet(workbook, worksheet, "Payroll");
@@ -275,7 +354,8 @@ export function exportPayrollToCSV(rows, filename) {
   URL.revokeObjectURL(url);
 }
 
-export function exportPayrollToPDF(rows, filename, monthLabel) {
+export async function exportPayrollToPDF(rows, filename, monthLabel) {
+  await ensureLogoLoaded();
   const pdfDoc = new jsPDF({
     orientation: "landscape",
     unit: "mm",
@@ -323,18 +403,36 @@ export function exportPayrollToPDF(rows, filename, monthLabel) {
       r.accountTitle || "—",
       r.accountNumber || "—",
     ]),
-    styles: { fontSize: 7.5, cellPadding: 2.2 },
-    headStyles: { fillColor: [109, 58, 255], textColor: 255, fontStyle: "bold" },
-    alternateRowStyles: { fillColor: [248, 250, 252] },
+    styles: { fontSize: 7.5, cellPadding: 2.2, textColor: THEME_DARK },
+    headStyles: { fillColor: THEME_DARK, textColor: 255, fontStyle: "bold" },
+    alternateRowStyles: { fillColor: THEME_LIGHT_ROW },
   });
 
   pdfDoc.save(`${filename}.pdf`);
 }
 
 // -----------------------------------------
-// Individual Employee Salary Slip PDF (with Company Logo)
+// Individual Employee Salary Slip PDF (with Company Logo & Dynamic Policies)
 // -----------------------------------------
-export function exportEmployeeSalarySlipPDF({ employee, stats, month }) {
+export async function exportEmployeeSalarySlipPDF({ employee, stats, month }) {
+  await ensureLogoLoaded();
+  const policies = getActivePolicies();
+
+  const latesPerOff = stats?.latesPerOff ?? policies.latesPerOff;
+  const extremeLatesPerOff =
+    stats?.extremeLatesPerOff ?? policies.extremeLatesPerOff;
+  const earlyLeavesPerOff =
+    stats?.earlyLeavesPerOff ?? policies.earlyLeavesPerOff;
+  const freeOffsAllowed = stats?.freeOffsAllowed ?? policies.freeOffsPerMonth;
+  const graceMinutes = stats?.graceMinutes ?? policies.graceMinutes;
+  const extremeWindow =
+    graceMinutes +
+    (stats?.extremeLateAfterGraceMinutes ??
+      policies.extremeLateAfterGraceMinutes);
+  const offFromExtremeLates =
+    stats?.offFromExtremeLates ??
+    Math.floor((stats?.extremeLateCount ?? 0) / extremeLatesPerOff);
+
   const pdfDoc = new jsPDF({
     orientation: "portrait",
     unit: "mm",
@@ -384,11 +482,11 @@ export function exportEmployeeSalarySlipPDF({ employee, stats, month }) {
         employee?.bankDetails?.iban || employee?.bankDetails?.accountNumber || "—",
       ],
     ],
-    styles: { fontSize: 8.5, cellPadding: 2.5 },
-    headStyles: { fillColor: [30, 27, 75], textColor: 255 },
+    styles: { fontSize: 8.5, cellPadding: 2.5, textColor: THEME_DARK },
+    headStyles: { fillColor: THEME_DARK, textColor: 255 },
     columnStyles: {
-      0: { fontStyle: "bold", fillColor: [248, 250, 252] },
-      2: { fontStyle: "bold", fillColor: [248, 250, 252] },
+      0: { fontStyle: "bold", fillColor: THEME_LIGHT_ROW },
+      2: { fontStyle: "bold", fillColor: THEME_LIGHT_ROW },
     },
   });
 
@@ -396,7 +494,7 @@ export function exportEmployeeSalarySlipPDF({ employee, stats, month }) {
   const attStartY = (pdfDoc.lastAutoTable?.finalY || startY + 35) + 6;
   autoTable(pdfDoc, {
     startY: attStartY,
-    head: [["Attendance Metric", "Count", "Policy / Rule", "Off-Equivalent Impact"]],
+    head: [["Attendance Metric", "Count", "Company Policy Rule", "Off-Equivalent Impact"]],
     body: [
       [
         "Scheduled Working Days (Month)",
@@ -411,21 +509,21 @@ export function exportEmployeeSalarySlipPDF({ employee, stats, month }) {
         "0 Offs",
       ],
       [
-        "Late Arrivals (> 20m grace)",
+        `Late Arrivals (> ${graceMinutes}m grace)`,
         stats.lateCount ?? 0,
-        "3 Lates = 1 Off",
+        `${latesPerOff} Lates = 1 Off`,
         `${stats.offFromLates ?? 0} Off(s)`,
       ],
       [
-        "Extreme Late Arrivals (> 50m)",
+        `Extreme Late Arrivals (> ${extremeWindow}m)`,
         stats.extremeLateCount ?? 0,
-        "1 Extreme Late = 1 Off",
-        `${stats.extremeLateCount ?? 0} Off(s)`,
+        `${extremeLatesPerOff} Extreme Late(s) = 1 Off`,
+        `${offFromExtremeLates} Off(s)`,
       ],
       [
         "Early Leaves (Approved)",
         stats.earlyLeaveCount ?? 0,
-        "2 Early Leaves = 1 Off",
+        `${earlyLeavesPerOff} Early Leaves = 1 Off`,
         `${stats.offFromEarlyLeaves ?? 0} Off(s)`,
       ],
       [
@@ -441,9 +539,9 @@ export function exportEmployeeSalarySlipPDF({ employee, stats, month }) {
         "0 Offs (Exempt)",
       ],
     ],
-    styles: { fontSize: 8.5, cellPadding: 2.5 },
-    headStyles: { fillColor: [109, 58, 255], textColor: 255 },
-    alternateRowStyles: { fillColor: [248, 250, 252] },
+    styles: { fontSize: 8.5, cellPadding: 2.5, textColor: THEME_DARK },
+    headStyles: { fillColor: THEME_CHARCOAL, textColor: 255 },
+    alternateRowStyles: { fillColor: THEME_LIGHT_ROW },
   });
 
   // Salary Calculation & Deduction Breakdown Table
@@ -464,7 +562,7 @@ export function exportEmployeeSalarySlipPDF({ employee, stats, month }) {
       ],
       [
         "Late & Extreme-Late Deduction (Gross)",
-        `${(stats.offFromLates ?? 0) + (stats.extremeLateCount ?? 0)} off-eq (${stats.lateCount ?? 0} late, ${stats.extremeLateCount ?? 0} ext. late)`,
+        `${(stats.offFromLates ?? 0) + offFromExtremeLates} off-eq (${stats.lateCount ?? 0} late, ${stats.extremeLateCount ?? 0} ext. late)`,
         `- Rs. ${Math.round(stats.lateDeductionGross ?? 0).toLocaleString()}`,
       ],
       [
@@ -473,8 +571,8 @@ export function exportEmployeeSalarySlipPDF({ employee, stats, month }) {
         `- Rs. ${Math.round(stats.earlyLeaveDeductionGross ?? 0).toLocaleString()}`,
       ],
       [
-        "Monthly Free Offs Relief (2 Free Offs Allowed)",
-        `Up to 2 off-equivalents waived per month`,
+        `Monthly Free Offs Relief (${freeOffsAllowed} Free Offs Allowed)`,
+        `Up to ${freeOffsAllowed} off-equivalent(s) waived per month`,
         `+ Rs. ${Math.round(stats.freeOffCredit ?? 0).toLocaleString()}`,
       ],
       [
@@ -488,17 +586,16 @@ export function exportEmployeeSalarySlipPDF({ employee, stats, month }) {
         `Rs. ${Math.round(stats.netSalary ?? 0).toLocaleString()}`,
       ],
     ],
-    styles: { fontSize: 9, cellPadding: 3 },
-    headStyles: { fillColor: [15, 23, 42], textColor: 255 },
+    styles: { fontSize: 9, cellPadding: 3, textColor: THEME_DARK },
+    headStyles: { fillColor: THEME_DARK, textColor: 255 },
     didParseCell: (data) => {
       if (data.section === "body" && data.row.index === 6) {
-        data.cell.styles.fillColor = [109, 58, 255];
+        data.cell.styles.fillColor = THEME_DARK;
         data.cell.styles.textColor = [255, 255, 255];
         data.cell.styles.fontStyle = "bold";
         data.cell.styles.fontSize = 10;
       } else if (data.section === "body" && data.row.index === 5) {
         data.cell.styles.fontStyle = "bold";
-        data.cell.styles.textColor = [220, 38, 38];
       }
     },
   });
@@ -508,7 +605,7 @@ export function exportEmployeeSalarySlipPDF({ employee, stats, month }) {
   pdfDoc.setFontSize(8.5);
   pdfDoc.setTextColor(100, 116, 139);
   pdfDoc.text(
-    "This is a computer-generated salary slip from Office Portal and does not require a physical signature.",
+    `This is a computer-generated salary slip from ${policies.companyName || "The Nexus Group Co"} and does not require a physical signature.`,
     14,
     finalY
   );
@@ -518,41 +615,64 @@ export function exportEmployeeSalarySlipPDF({ employee, stats, month }) {
 }
 
 // -----------------------------------------
-// Print HTML Element
+// Print HTML Element (with Company Logo & Black/White Theme)
 // -----------------------------------------
 export function printElement(elementId) {
   const source = document.getElementById(elementId);
   if (!source) return;
+
+  const policies = getActivePolicies();
+  const companyName = (policies.companyName || "THE NEXUS GROUP CO").toUpperCase();
+  const logoUrl = `${window.location.origin}/company-logo.webp`;
 
   const clone = source.cloneNode(true);
   clone.querySelectorAll("[data-no-print]").forEach((el) => el.remove());
 
   const printWindow = window.open("", "_blank");
   printWindow.document.write(`
-    <html><head><title>Office Portal Report</title>
+    <html><head><title>${companyName} — Report</title>
     <style>
-      body { font-family: sans-serif; padding: 20px; }
-      .brand-head { display: flex; align-items: center; gap: 12px; border-bottom: 2px solid #6d3aff; padding-bottom: 12px; margin-bottom: 16px; }
-      .brand-badge { width: 32px; height: 32px; border-radius: 8px; background: #6d3aff; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: bold; }
+      body { font-family: Arial, Helvetica, sans-serif; padding: 20px; color: #0f172a; }
+      .brand-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background: #0f172a;
+        color: #ffffff;
+        padding: 14px 20px;
+        border-radius: 6px;
+        margin-bottom: 18px;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      .brand-logo { height: 42px; width: auto; object-fit: contain; }
       table { width: 100%; border-collapse: collapse; }
-      th, td { border: 1px solid #333; padding: 8px; text-align: left; font-size: 12px; }
-      th { background: #f1f5f9; }
+      th, td { border: 1px solid #1e293b; padding: 8px; text-align: left; font-size: 12px; color: #0f172a; }
+      th {
+        background: #0f172a;
+        color: #ffffff;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      tr:nth-child(even) td { background: #f8fafc; }
     </style></head>
     <body>
       <div class="brand-head">
-        <div class="brand-badge">OP</div>
-        <div>
-          <strong style="font-size: 16px;">OFFICE PORTAL</strong><br/>
-          <small style="color: #64748b;">Generated Report · ${new Date().toLocaleDateString()}</small>
+        <img src="${logoUrl}" alt="${companyName}" class="brand-logo" />
+        <div style="text-align: right;">
+          <strong style="font-size: 14px; letter-spacing: 0.5px;">${companyName}</strong><br/>
+          <small style="color: #cbd5e1;">Official Report · ${new Date().toLocaleDateString("en-GB")}</small>
         </div>
       </div>
       ${clone.innerHTML}
     </body></html>
   `);
   printWindow.document.close();
-  printWindow.focus();
-  printWindow.print();
-  printWindow.close();
+  setTimeout(() => {
+    printWindow.focus();
+    printWindow.print();
+    printWindow.close();
+  }, 350);
 }
 
 // -----------------------------------------
@@ -563,6 +683,7 @@ function buildDirectoryRows(employees) {
     Name: emp.personalInfo?.fullName || emp.name || "—",
     Email: emp.email || "—",
     Role: emp.role || "—",
+    Status: emp.isActive === false ? "Deactivated" : "Active",
     "Base Salary": emp.salary ?? 0,
     Phone: emp.personalInfo?.phone || "—",
     CNIC: emp.personalInfo?.cnic || "—",
@@ -606,13 +727,14 @@ export function exportDirectoryToExcel(employees, filename) {
   const rows = buildDirectoryRows(employees);
   if (rows.length === 0) return;
 
-  const worksheet = XLSX.utils.json_to_sheet(rows);
+  const worksheet = createBrandedWorksheet(rows, "All Employees Directory");
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, "Employees");
   XLSX.writeFile(workbook, `${filename}.xlsx`);
 }
 
-export function exportDirectoryToPDF(employees, filename) {
+export async function exportDirectoryToPDF(employees, filename) {
+  await ensureLogoLoaded();
   const rows = buildDirectoryRows(employees);
   if (rows.length === 0) return;
 
@@ -637,15 +759,16 @@ export function exportDirectoryToPDF(employees, filename) {
       fontSize: 6.5,
       cellPadding: 2,
       overflow: "linebreak",
+      textColor: THEME_DARK,
     },
     headStyles: {
-      fillColor: [109, 58, 255],
+      fillColor: THEME_DARK,
       textColor: 255,
       fontStyle: "bold",
       fontSize: 7,
     },
     alternateRowStyles: {
-      fillColor: [248, 250, 252],
+      fillColor: THEME_LIGHT_ROW,
     },
     margin: { top: 25, right: 8, bottom: 10, left: 8 },
   });
@@ -682,13 +805,14 @@ export function exportMonthToExcel(rows, filename) {
     "Check-in": r.time || "-",
     Notes: r.note || "-",
   }));
-  const worksheet = XLSX.utils.json_to_sheet(data);
+  const worksheet = createBrandedWorksheet(data, "Monthly Attendance Report");
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, "Attendance");
   XLSX.writeFile(workbook, `${filename}.xlsx`);
 }
 
-export function exportMonthToPDF(rows, filename, title) {
+export async function exportMonthToPDF(rows, filename, title) {
+  await ensureLogoLoaded();
   const pdfDoc = new jsPDF();
   const startY = drawCompanyHeader(
     pdfDoc,
@@ -700,8 +824,9 @@ export function exportMonthToPDF(rows, filename, title) {
     startY,
     head: [["Date", "Day", "Status", "Check-in", "Notes"]],
     body: monthTable(rows),
-    styles: { fontSize: 9 },
-    headStyles: { fillColor: [109, 58, 255] },
+    styles: { fontSize: 9, textColor: THEME_DARK },
+    headStyles: { fillColor: THEME_DARK, textColor: 255, fontStyle: "bold" },
+    alternateRowStyles: { fillColor: THEME_LIGHT_ROW },
   });
 
   pdfDoc.save(`${filename}.pdf`);
@@ -725,13 +850,17 @@ export function exportLeavesToExcel(requests, filename) {
     "Admin Comment": r.adminComment || "—",
   }));
 
-  const worksheet = XLSX.utils.json_to_sheet(data);
+  const worksheet = createBrandedWorksheet(
+    data,
+    "Employee Leave & Early Leave Report"
+  );
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, "Leave Requests");
   XLSX.writeFile(workbook, `${filename}.xlsx`);
 }
 
-export function exportLeavesToPDF(requests, filename, filterLabel = "All") {
+export async function exportLeavesToPDF(requests, filename, filterLabel = "All") {
+  await ensureLogoLoaded();
   const pdfDoc = new jsPDF({
     orientation: "landscape",
     unit: "mm",
@@ -770,8 +899,9 @@ export function exportLeavesToPDF(requests, filename, filterLabel = "All") {
       (r.status || "pending").toUpperCase(),
       r.adminComment || "—",
     ]),
-    styles: { fontSize: 8 },
-    headStyles: { fillColor: [109, 58, 255] },
+    styles: { fontSize: 8, textColor: THEME_DARK },
+    headStyles: { fillColor: THEME_DARK, textColor: 255, fontStyle: "bold" },
+    alternateRowStyles: { fillColor: THEME_LIGHT_ROW },
   });
 
   pdfDoc.save(`${filename}.pdf`);

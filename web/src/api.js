@@ -4,6 +4,42 @@ const API_BASE =
 
 const TOKEN_KEY = "office_portal_token";
 const USER_KEY = "office_portal_user";
+const POLICY_KEY = "office_portal_policies";
+
+export const DEFAULT_POLICIES = {
+  companyName: "The Nexus Group Co",
+  graceMinutes: 20,
+  extremeLateAfterGraceMinutes: 30,
+  latesPerOff: 3,
+  extremeLatesPerOff: 1,
+  earlyLeavesPerOff: 2,
+  freeOffsPerMonth: 2,
+};
+
+export function getCachedPolicies() {
+  try {
+    const raw = localStorage.getItem(POLICY_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return { ...DEFAULT_POLICIES, ...parsed };
+    }
+  } catch {
+    // ignore
+  }
+  return { ...DEFAULT_POLICIES };
+}
+
+export function setCachedPolicies(policy) {
+  if (!policy) return;
+  try {
+    localStorage.setItem(
+      POLICY_KEY,
+      JSON.stringify({ ...DEFAULT_POLICIES, ...policy })
+    );
+  } catch {
+    // ignore
+  }
+}
 
 let currentUser = null;
 try {
@@ -241,4 +277,24 @@ export async function saveSmtpSettings(payload) {
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+// -----------------------------------------
+// Company Policies API (Admin & Global)
+// -----------------------------------------
+export async function fetchPolicies() {
+  const data = await apiRequest("/policies");
+  const policy = data.policy || DEFAULT_POLICIES;
+  setCachedPolicies(policy);
+  return policy;
+}
+
+export async function updatePolicies(payload) {
+  const data = await apiRequest("/policies", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+  const policy = data.policy || DEFAULT_POLICIES;
+  setCachedPolicies(policy);
+  return policy;
 }

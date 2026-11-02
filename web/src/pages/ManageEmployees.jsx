@@ -90,9 +90,9 @@ function ManageEmployees() {
     <div className="sched-page">
       <header className="sched-topbar">
         <div className="sched-identity">
-          <div className="sched-avatar">M</div>
+          <div className="sched-avatar">E</div>
           <div className="sched-identity-text">
-            <span className="sched-name">Manage All Employees</span>
+            <span className="sched-name">Employee Status</span>
             <span className="sched-role-pill">Admin Control</span>
           </div>
         </div>
@@ -112,10 +112,10 @@ function ManageEmployees() {
 
       <section className="sched-hero">
         <div className="sched-hero-glow" />
-        <p className="sched-hero-date">Roles & Access Control</p>
-        <h1 className="sched-hero-title">Manage All Employees</h1>
+        <p className="sched-hero-date">Portal Access & Roles</p>
+        <h1 className="sched-hero-title">Employee Status</h1>
         <p className="sched-hero-sub">
-          Kisi bhi employee ko Admin banayein, uski details edit karein, ya uska portal Deactivate / Activate karein.
+          Kisi bhi employee ka portal Activate ya Deactivate karein, ya usko Admin banayein. Deactivate hone par employee ka portal bilkul kaam nahi karega.
         </p>
       </section>
 

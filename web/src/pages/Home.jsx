@@ -12,6 +12,7 @@ import {
   updateUserById,
   fetchSmtpSettings,
   saveSmtpSettings,
+  fetchPolicies,
   apiLogout,
 } from "../api";
 import {
@@ -124,13 +125,14 @@ function Home() {
     const fetchAdminData = async () => {
       setEmpLoading(true);
       try {
-        const [emps, todayAttList, monthAttList, allLeaves, smtpInfo] =
+        const [emps, todayAttList, monthAttList, allLeaves, smtpInfo, activePolicies] =
           await Promise.all([
             fetchUsers(),
             fetchAttendance({ date: todayStr }),
             fetchAttendance({ month: currentMonth }),
             fetchLeaves(),
             fetchSmtpSettings().catch(() => ({ configured: false })),
+            fetchPolicies().catch(() => null),
           ]);
         if (cancelled) return;
 
@@ -180,6 +182,7 @@ function Home() {
             baseSalary: Number(emp.salary) || 0,
             month: currentMonth,
             approvedLeaves: leavesByUid[emp.uid] || [],
+            policies: activePolicies,
           });
           statsMap[emp.uid] = empStat;
           payrollSum += empStat.netSalary || 0;
@@ -208,10 +211,11 @@ function Home() {
     const fetchEmployeeStatus = async () => {
       try {
         const uid = userData.uid;
-        const [todayRecs, monthRecs, approvedLeaves] = await Promise.all([
+        const [todayRecs, monthRecs, approvedLeaves, activePolicies] = await Promise.all([
           fetchAttendance({ uid, date: todayStr }),
           fetchAttendance({ uid, month: currentMonth }),
           fetchLeaves({ uid, status: "approved" }),
+          fetchPolicies().catch(() => null),
         ]);
         if (cancelled) return;
 
@@ -222,7 +226,8 @@ function Home() {
           const now = new Date();
           const { status, lateMinutes } = calculateAttendanceStatus(
             userData.schedule,
-            now
+            now,
+            activePolicies
           );
           if (status === "extreme-late") setLateWarning({ lateMinutes });
           else setLateWarning(null);
@@ -248,6 +253,7 @@ function Home() {
           baseSalary: Number(userData.salary) || 0,
           month: currentMonth,
           approvedLeaves,
+          policies: activePolicies,
         });
         setMyMonthStats(computedStats);
       } catch (err) {
@@ -398,17 +404,17 @@ function Home() {
     <div className="home-layout">
       {/* ── SIDEBAR ── */}
       <aside className="home-sidebar">
-        <div className="home-logo">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-            <path
-              d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-          Portal
+        <div className="home-logo" style={{ padding: "4px 0" }}>
+          <img
+            src="/company-logo.webp"
+            alt="The Nexus Group Co"
+            style={{
+              maxHeight: "38px",
+              maxWidth: "170px",
+              width: "auto",
+              objectFit: "contain",
+            }}
+          />
         </div>
         <nav className="home-nav">
           <p className="home-nav-heading">Main Menu</p>
@@ -446,6 +452,18 @@ function Home() {
               <p className="home-nav-heading" style={{ marginTop: "24px" }}>
                 Admin Tools
               </p>
+              <button
+                className="home-nav-btn"
+                onClick={() => navigate("/employee-status")}
+              >
+                Employee Status
+              </button>
+              <button
+                className="home-nav-btn"
+                onClick={() => navigate("/company-policies")}
+              >
+                Company Policies
+              </button>
               <button
                 className="home-nav-btn"
                 onClick={() => navigate("/employee-attendance")}
@@ -610,6 +628,18 @@ function Home() {
                 />
               </svg>
               Payroll & Slips
+            </button>
+            <button
+              onClick={() => navigate("/employee-status")}
+              className="quick-btn"
+            >
+              👥 Employee Status
+            </button>
+            <button
+              onClick={() => navigate("/company-policies")}
+              className="quick-btn"
+            >
+              ⚖️ Company Policies
             </button>
             <button
               onClick={() => setShowSmtpModal(true)}
@@ -928,7 +958,7 @@ function Home() {
                 </div>
                 <div className="home-emp-net">
                   <span className="home-emp-net-label">
-                    Total Off-Equivalents (2 Free Offs Allowed)
+                    Total Off-Equivalents ({myMonthStats.freeOffsAllowed ?? 2} Free Offs Allowed)
                   </span>
                   <span className="home-emp-net-value">
                     {myMonthStats.offEquivalents ?? 0} Offs ({myMonthStats.deductibleOffs ?? 0} Deductible)
@@ -942,19 +972,19 @@ function Home() {
                     </span>
                   </div>
                   <div className="home-emp-stat">
-                    <span className="home-emp-stat-label">Lates (3 = 1 Off)</span>
+                    <span className="home-emp-stat-label">Lates ({myMonthStats.latesPerOff ?? 3} = 1 Off)</span>
                     <span className="home-emp-stat-value">
                       {myMonthStats.lateCount ?? 0} ({myMonthStats.offFromLates ?? 0} Off)
                     </span>
                   </div>
                   <div className="home-emp-stat">
-                    <span className="home-emp-stat-label">Extreme Lates</span>
+                    <span className="home-emp-stat-label">Extreme Lates ({myMonthStats.extremeLatesPerOff ?? 1} = 1 Off)</span>
                     <span className="home-emp-stat-value">
-                      {myMonthStats.extremeLateCount ?? 0} ({myMonthStats.extremeLateCount ?? 0} Off)
+                      {myMonthStats.extremeLateCount ?? 0} ({myMonthStats.offFromExtremeLates ?? myMonthStats.extremeLateCount ?? 0} Off)
                     </span>
                   </div>
                   <div className="home-emp-stat">
-                    <span className="home-emp-stat-label">Absents / Early Leave</span>
+                    <span className="home-emp-stat-label">Absents / Early ({myMonthStats.earlyLeavesPerOff ?? 2}=1)</span>
                     <span className="home-emp-stat-value">
                       {myMonthStats.absentCount ?? 0} / {myMonthStats.earlyLeaveCount ?? 0}
                     </span>

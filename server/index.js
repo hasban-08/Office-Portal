@@ -15,6 +15,7 @@ const {
   mapAttendanceRow,
   mapLeaveRow,
   mapAnnouncementRow,
+  mapPolicyRow,
 } = require("./db");
 
 const {
@@ -56,10 +57,22 @@ app.use(async (req, res, next) => {
 
 // Helper for attendance calculation (matches frontend attendanceHelpers.js)
 const WEEKDAY_KEYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
-const GRACE_MINUTES = 20;
-const EXTREME_LATE_AFTER_GRACE_MINUTES = 30;
 
-function calculateAttendanceStatus(schedule, checkInDate = new Date()) {
+async function getCompanyPolicy() {
+  try {
+    const r = await query("SELECT * FROM company_policies WHERE id = 1");
+    return mapPolicyRow(r.rows[0]);
+  } catch {
+    return mapPolicyRow(null);
+  }
+}
+
+function calculateAttendanceStatus(schedule, checkInDate = new Date(), policy = {}) {
+  const graceMinutes = Number(policy?.graceMinutes ?? 20);
+  const extremeLateAfterGraceMinutes = Number(
+    policy?.extremeLateAfterGraceMinutes ?? 30
+  );
+
   const weekdayKey = WEEKDAY_KEYS[checkInDate.getDay()];
   const expectedTime = schedule?.[weekdayKey];
 
@@ -71,7 +84,7 @@ function calculateAttendanceStatus(schedule, checkInDate = new Date()) {
   const expectedDate = new Date(checkInDate);
   expectedDate.setHours(expH, expM, 0, 0);
 
-  const graceDate = new Date(expectedDate.getTime() + GRACE_MINUTES * 60000);
+  const graceDate = new Date(expectedDate.getTime() + graceMinutes * 60000);
 
   if (checkInDate <= graceDate) {
     return { status: "on-time", lateMinutes: 0, weekdayKey };
@@ -79,7 +92,7 @@ function calculateAttendanceStatus(schedule, checkInDate = new Date()) {
 
   const lateMinutes = Math.round((checkInDate.getTime() - graceDate.getTime()) / 60000);
   const status =
-    lateMinutes > EXTREME_LATE_AFTER_GRACE_MINUTES ? "extreme-late" : "late";
+    lateMinutes > extremeLateAfterGraceMinutes ? "extreme-late" : "late";
 
   return { status, lateMinutes, weekdayKey };
 }
@@ -476,10 +489,15 @@ app.put("/api/users/:uid", authMiddleware, async (req, res) => {
 
     // If schedule was updated by Admin, recalculate all past attendance records for this user
     if (!isLockedForEmployee && body.schedule !== undefined) {
+      const policy = await getCompanyPolicy();
       const attRes = await query("SELECT * FROM attendance WHERE uid = $1", [uid]);
       for (const attRow of attRes.rows) {
         const checkInDate = new Date(attRow.check_in_time);
-        const { status, lateMinutes } = calculateAttendanceStatus(schedule, checkInDate);
+        const { status, lateMinutes } = calculateAttendanceStatus(
+          schedule,
+          checkInDate,
+          policy
+        );
         await query(
           "UPDATE attendance SET status = $1, late_minutes = $2 WHERE id = $3",
           [status, lateMinutes, attRow.id]
@@ -550,9 +568,10 @@ app.post("/api/attendance/mark", authMiddleware, async (req, res) => {
       return res.status(404).json({ error: "Employee not found." });
     }
     const emp = mapUserRow(userRes.rows[0]);
+    const policy = await getCompanyPolicy();
 
     const now = new Date();
-    const { status, lateMinutes } = calculateAttendanceStatus(emp.schedule, now);
+    const { status, lateMinutes } = calculateAttendanceStatus(emp.schedule, now, policy);
     const empName = emp.fullName || emp.name || emp.email.split("@")[0] || "Employee";
 
     const insertRes = await query(
@@ -769,6 +788,122 @@ app.delete("/api/announcements/:id", authMiddleware, async (req, res) => {
     res.json({ deleted: true, id: String(id) });
   } catch (err) {
     console.error("Delete announcement error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ---------------------------------------------------------
+// COMPANY POLICIES ROUTES (Admin / All Users)
+// ---------------------------------------------------------
+app.get("/api/policies", async (req, res) => {
+  try {
+    const policy = await getCompanyPolicy();
+    res.json({ policy });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put("/api/policies", authMiddleware, async (req, res) => {
+  try {
+    const callerRes = await query("SELECT role FROM users WHERE uid = $1", [
+      req.user.uid,
+    ]);
+    if (callerRes.rows[0]?.role !== "admin") {
+      return res.status(403).json({ error: "Only Admin can update company policies." });
+    }
+
+    const current = await getCompanyPolicy();
+    const body = req.body || {};
+
+    const companyName =
+      body.companyName !== undefined
+        ? String(body.companyName).trim() || "The Nexus Group Co"
+        : current.companyName;
+    const graceMinutes =
+      body.graceMinutes !== undefined
+        ? Math.max(0, Number(body.graceMinutes) || 0)
+        : current.graceMinutes;
+    const extremeLateAfterGraceMinutes =
+      body.extremeLateAfterGraceMinutes !== undefined
+        ? Math.max(0, Number(body.extremeLateAfterGraceMinutes) || 0)
+        : current.extremeLateAfterGraceMinutes;
+    const latesPerOff =
+      body.latesPerOff !== undefined
+        ? Math.max(1, Number(body.latesPerOff) || 1)
+        : current.latesPerOff;
+    const extremeLatesPerOff =
+      body.extremeLatesPerOff !== undefined
+        ? Math.max(1, Number(body.extremeLatesPerOff) || 1)
+        : current.extremeLatesPerOff;
+    const earlyLeavesPerOff =
+      body.earlyLeavesPerOff !== undefined
+        ? Math.max(1, Number(body.earlyLeavesPerOff) || 1)
+        : current.earlyLeavesPerOff;
+    const freeOffsPerMonth =
+      body.freeOffsPerMonth !== undefined
+        ? Math.max(0, Number(body.freeOffsPerMonth) || 0)
+        : current.freeOffsPerMonth;
+
+    const updateRes = await query(
+      `INSERT INTO company_policies (
+         id, company_name, grace_minutes, extreme_late_after_grace_minutes,
+         lates_per_off, extreme_lates_per_off, early_leaves_per_off, free_offs_per_month, updated_at
+       ) VALUES (1, $1, $2, $3, $4, $5, $6, $7, NOW())
+       ON CONFLICT (id) DO UPDATE SET
+         company_name = EXCLUDED.company_name,
+         grace_minutes = EXCLUDED.grace_minutes,
+         extreme_late_after_grace_minutes = EXCLUDED.extreme_late_after_grace_minutes,
+         lates_per_off = EXCLUDED.lates_per_off,
+         extreme_lates_per_off = EXCLUDED.extreme_lates_per_off,
+         early_leaves_per_off = EXCLUDED.early_leaves_per_off,
+         free_offs_per_month = EXCLUDED.free_offs_per_month,
+         updated_at = NOW()
+       RETURNING *`,
+      [
+        companyName,
+        graceMinutes,
+        extremeLateAfterGraceMinutes,
+        latesPerOff,
+        extremeLatesPerOff,
+        earlyLeavesPerOff,
+        freeOffsPerMonth,
+      ]
+    );
+
+    const updatedPolicy = mapPolicyRow(updateRes.rows[0]);
+
+    // Recalculate attendance statuses if graceMinutes or extremeLateAfterGraceMinutes changed
+    if (
+      graceMinutes !== current.graceMinutes ||
+      extremeLateAfterGraceMinutes !== current.extremeLateAfterGraceMinutes
+    ) {
+      const usersRes = await query("SELECT uid, schedule FROM users");
+      const schedulesByUid = {};
+      for (const u of usersRes.rows) {
+        const mapped = mapUserRow(u);
+        schedulesByUid[u.uid] = mapped.schedule;
+      }
+
+      const attRes = await query("SELECT * FROM attendance");
+      for (const attRow of attRes.rows) {
+        const sched = schedulesByUid[attRow.uid] || DEFAULT_SCHEDULE;
+        const checkInDate = new Date(attRow.check_in_time);
+        const { status, lateMinutes } = calculateAttendanceStatus(
+          sched,
+          checkInDate,
+          updatedPolicy
+        );
+        await query(
+          "UPDATE attendance SET status = $1, late_minutes = $2 WHERE id = $3",
+          [status, lateMinutes, attRow.id]
+        );
+      }
+    }
+
+    res.json({ policy: updatedPolicy });
+  } catch (err) {
+    console.error("Update policy error:", err);
     res.status(500).json({ error: err.message });
   }
 });

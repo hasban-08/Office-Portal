@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useState, useEffect } from "react";
-import { onPortalAuthStateChanged } from "./api";
+import { onPortalAuthStateChanged, fetchPolicies } from "./api";
 
 import Signup from "./pages/Signup";
 import Login from "./pages/Login";
@@ -13,6 +13,8 @@ import ManageSalary from "./pages/ManageSalary";
 import DailyAttendance from "./pages/DailyAttendance";
 import ManageSchedule from "./pages/ManageSchedule";
 import CompleteProfile from "./pages/CompleteProfile";
+import ManageEmployees from "./pages/ManageEmployees";
+import CompanyPolicies from "./pages/CompanyPolicies";
 
 import ProtectedRoute from "./components/ProtectedRoutes";
 import ProfileGate from "./components/ProfileGate";
@@ -25,6 +27,7 @@ function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    fetchPolicies().catch(() => {});
     const unsub = onPortalAuthStateChanged((currentUser) => {
       setUser(currentUser);
       setLoading(false);
@@ -106,6 +109,39 @@ function App() {
                 <ProtectedRoute adminOnly>
                   <ProfileGate>
                     <ManageLeaveRequests />
+                  </ProfileGate>
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/employee-status"
+              element={
+                <ProtectedRoute adminOnly>
+                  <ProfileGate>
+                    <ManageEmployees />
+                  </ProfileGate>
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/manage-employees"
+              element={
+                <ProtectedRoute adminOnly>
+                  <ProfileGate>
+                    <ManageEmployees />
+                  </ProfileGate>
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/company-policies"
+              element={
+                <ProtectedRoute adminOnly>
+                  <ProfileGate>
+                    <CompanyPolicies />
                   </ProfileGate>
                 </ProtectedRoute>
               }

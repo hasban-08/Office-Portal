@@ -142,6 +142,28 @@ async function initDb() {
     );
   `);
 
+  await query(`
+    CREATE TABLE IF NOT EXISTS company_policies (
+      id INTEGER PRIMARY KEY DEFAULT 1,
+      company_name TEXT NOT NULL DEFAULT 'The Nexus Group Co',
+      grace_minutes INTEGER NOT NULL DEFAULT 20,
+      extreme_late_after_grace_minutes INTEGER NOT NULL DEFAULT 30,
+      lates_per_off NUMERIC(5, 2) NOT NULL DEFAULT 3,
+      extreme_lates_per_off NUMERIC(5, 2) NOT NULL DEFAULT 1,
+      early_leaves_per_off NUMERIC(5, 2) NOT NULL DEFAULT 2,
+      free_offs_per_month NUMERIC(5, 2) NOT NULL DEFAULT 2,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  await query(`
+    INSERT INTO company_policies (
+      id, company_name, grace_minutes, extreme_late_after_grace_minutes,
+      lates_per_off, extreme_lates_per_off, early_leaves_per_off, free_offs_per_month
+    ) VALUES (1, 'The Nexus Group Co', 20, 30, 3, 1, 2, 2)
+    ON CONFLICT (id) DO NOTHING;
+  `);
+
   console.log(`📦 PostgreSQL tables verified/initialized (mode: ${dbMode})`);
 }
 
@@ -235,6 +257,30 @@ function mapAnnouncementRow(row) {
   };
 }
 
+function mapPolicyRow(row) {
+  if (!row) {
+    return {
+      companyName: "The Nexus Group Co",
+      graceMinutes: 20,
+      extremeLateAfterGraceMinutes: 30,
+      latesPerOff: 3,
+      extremeLatesPerOff: 1,
+      earlyLeavesPerOff: 2,
+      freeOffsPerMonth: 2,
+    };
+  }
+  return {
+    companyName: row.company_name || "The Nexus Group Co",
+    graceMinutes: Number(row.grace_minutes ?? 20),
+    extremeLateAfterGraceMinutes: Number(row.extreme_late_after_grace_minutes ?? 30),
+    latesPerOff: Number(row.lates_per_off ?? 3) || 3,
+    extremeLatesPerOff: Number(row.extreme_lates_per_off ?? 1) || 1,
+    earlyLeavesPerOff: Number(row.early_leaves_per_off ?? 2) || 2,
+    freeOffsPerMonth: Number(row.free_offs_per_month ?? 2),
+    updatedAt: row.updated_at,
+  };
+}
+
 module.exports = {
   query,
   initDb,
@@ -244,4 +290,5 @@ module.exports = {
   mapAttendanceRow,
   mapLeaveRow,
   mapAnnouncementRow,
+  mapPolicyRow,
 };
