@@ -99,6 +99,29 @@ export function formatTime12(date) {
   });
 }
 
+// "09:00", "9:00 AM", "09:00:00", "5:30 pm" sab samajhta hai
+export function parseScheduleTime(value) {
+  if (!value || typeof value !== "string") return null;
+
+  const match = value
+    .trim()
+    .match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*([AaPp][Mm])?$/);
+  if (!match) return null;
+
+  let h = Number(match[1]);
+  const min = Number(match[2]);
+  const meridiem = match[3]?.toUpperCase();
+
+  if (meridiem) {
+    if (h < 1 || h > 12) return null;
+    if (meridiem === "PM" && h !== 12) h += 12;
+    if (meridiem === "AM" && h === 12) h = 0;
+  }
+
+  if (h > 23 || min > 59) return null;
+  return { h, m: min };
+}
+
 export function calculateAttendanceStatus(
   schedule,
   checkInDate = new Date(),
@@ -106,31 +129,28 @@ export function calculateAttendanceStatus(
 ) {
   const activePolicy = getActivePolicies(policyOverride);
   const weekdayKey = getWeekdayKey(checkInDate);
-  const expectedTime = schedule?.[weekdayKey];
+  const rawTime = schedule?.[weekdayKey];
 
-  if (!expectedTime || !/^\d{1,2}:\d{2}$/.test(expectedTime)) {
-    return {
-      status: "on-time",
-      lateMinutes: 0,
-      weekdayKey,
-    };
+  // Schedule mein is din ka time nahi hai (off day)
+  if (!rawTime) {
+    return { status: "on-time", lateMinutes: 0, weekdayKey };
   }
 
-  const [expH, expM] = expectedTime.split(":").map(Number);
+  const parsed = parseScheduleTime(rawTime);
+  if (!parsed) {
+    console.warn("Schedule time parse nahi hua:", rawTime, weekdayKey);
+    return { status: "unscheduled", lateMinutes: 0, weekdayKey };
+  }
 
   const expectedDate = new Date(checkInDate);
-  expectedDate.setHours(expH, expM, 0, 0);
+  expectedDate.setHours(parsed.h, parsed.m, 0, 0);
 
   const graceDate = new Date(
     expectedDate.getTime() + activePolicy.graceMinutes * 60000
   );
 
   if (checkInDate <= graceDate) {
-    return {
-      status: "on-time",
-      lateMinutes: 0,
-      weekdayKey,
-    };
+    return { status: "on-time", lateMinutes: 0, weekdayKey };
   }
 
   const lateMinutes = Math.round(
@@ -142,14 +162,14 @@ export function calculateAttendanceStatus(
       ? "extreme-late"
       : "late";
 
-  return {
-    status,
-    lateMinutes,
-    weekdayKey,
-  };
+  return { status, lateMinutes, weekdayKey };
 }
 
 export function statusLabel(record) {
+  if (record?.status === "unscheduled") {
+    return "Schedule Missing";
+  }
+
   if (record?.status === "extreme-late") {
     return `Extreme Late (${record.lateMinutes ?? 0} min)`;
   }
@@ -345,6 +365,10 @@ export function calculateSalaryStats({
     (record) => record.status === "extreme-late"
   ).length;
 
+  const unscheduledCount = records.filter(
+    (record) => record.status === "unscheduled"
+  ).length;
+
   const scheduledDates = getScheduledDatesUpTo(
     schedule,
     monthStr,
@@ -435,6 +459,7 @@ export function calculateSalaryStats({
     onTimeCount,
     lateCount,
     extremeLateCount,
+    unscheduledCount,
     absentCount,
     approvedLeaveCount,
     officialHolidayCount,

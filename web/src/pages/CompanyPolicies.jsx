@@ -228,7 +228,7 @@ function CompanyPolicies() {
                     marginBottom: "6px",
                   }}
                 >
-                  Chutti ki Wajah (Reason)
+                  Reason
                 </label>
                 <input
                   type="text"
