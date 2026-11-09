@@ -6,6 +6,7 @@ import {
   statusLabel,
   getApprovedLeaveDates,
   getActiveHolidayMap,
+  resolveRecordWithSchedule,
 } from "./attendanceHelpers";
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -80,9 +81,13 @@ export function buildMonthRows({
     let note = "";
 
     if (record) {
-      kind = record.status || "on-time";
-      label = statusLabel(record);
-      time = formatTime12(record.checkInTime);
+      const resolved = resolveRecordWithSchedule(record, schedule);
+      kind = resolved.status || "on-time";
+      label = statusLabel(resolved);
+      time = formatTime12(resolved.checkInTime);
+      if (resolved.editedBy) {
+        note = resolved.editedBy;
+      }
       summary.present += 1;
       if (kind === "late") summary.late += 1;
       else if (kind === "extreme-late") summary.extremeLate += 1;

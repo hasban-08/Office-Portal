@@ -16,7 +16,7 @@ function ManageSchedule() {
     const loadEmployees = async () => {
       try {
         const list = await fetchUsers();
-        setEmployees(list);
+        setEmployees((list || []).filter((e) => !e.isAttendanceExempt));
       } catch (err) {
         console.error("ManageSchedule fetch error:", err);
       }

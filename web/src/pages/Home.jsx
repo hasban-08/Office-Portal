@@ -186,6 +186,7 @@ function Home() {
             approvedLeaves: leavesByUid[emp.uid] || [],
             policies: activePolicies,
             holidays: holidayList,
+            isAttendanceExempt: Boolean(emp.isAttendanceExempt),
           });
           statsMap[emp.uid] = empStat;
           payrollSum += empStat.netSalary || 0;
@@ -390,7 +391,8 @@ function Home() {
   const isAdmin = userData.role === "admin";
   const initial = (userData.name || "U").charAt(0).toUpperCase();
 
-  const totalEmps = employees.length || 1;
+  const attendanceEmployees = employees.filter((e) => !e.isAttendanceExempt);
+  const totalEmps = attendanceEmployees.length || 1;
   const onTimeCount = todayAtt.filter((r) => r.status === "on-time").length;
   const lateCount = todayAtt.filter(
     (r) => r.status === "late" || r.status === "extreme-late"
@@ -975,6 +977,7 @@ function Home() {
                           )}
                           <span className="home-emp-name">
                             {displayNameFor(emp)}
+                            {emp.isAttendanceExempt ? ` (${emp.designation || "Office Boy"})` : ""}
                           </span>
                         </div>
                         <button
@@ -1006,34 +1009,63 @@ function Home() {
                           Rs. {Math.round(s.netSalary ?? 0).toLocaleString()}
                         </span>
                       </div>
-                      <div className="home-emp-stats">
-                        <div className="home-emp-stat">
-                          <span className="home-emp-stat-label">Base</span>
-                          <span className="home-emp-stat-value">
-                            Rs. {Number(emp.salary) || 0}
-                          </span>
+                      {emp.isAttendanceExempt ? (
+                        <div className="home-emp-stats">
+                          <div className="home-emp-stat">
+                            <span className="home-emp-stat-label">CNIC</span>
+                            <span className="home-emp-stat-value">
+                              {emp.personalInfo?.cnic || "—"}
+                            </span>
+                          </div>
+                          <div className="home-emp-stat">
+                            <span className="home-emp-stat-label">Bank/Wallet</span>
+                            <span className="home-emp-stat-value">
+                              {emp.bankDetails?.providerName || emp.bankDetails?.method || "—"}
+                            </span>
+                          </div>
+                          <div className="home-emp-stat">
+                            <span className="home-emp-stat-label">Acc No.</span>
+                            <span className="home-emp-stat-value">
+                              {emp.bankDetails?.accountNumber || "—"}
+                            </span>
+                          </div>
+                          <div className="home-emp-stat">
+                            <span className="home-emp-stat-label">Attendance</span>
+                            <span className="home-emp-stat-value" style={{ color: "#4ade80" }}>
+                              Exempt
+                            </span>
+                          </div>
                         </div>
-                        <div className="home-emp-stat">
-                          <span className="home-emp-stat-label">Deducted</span>
-                          <span className="home-emp-stat-value">
-                            Rs. {(s.deduction ?? 0).toFixed(0)}
-                          </span>
+                      ) : (
+                        <div className="home-emp-stats">
+                          <div className="home-emp-stat">
+                            <span className="home-emp-stat-label">Base</span>
+                            <span className="home-emp-stat-value">
+                              Rs. {Number(emp.salary) || 0}
+                            </span>
+                          </div>
+                          <div className="home-emp-stat">
+                            <span className="home-emp-stat-label">Deducted</span>
+                            <span className="home-emp-stat-value">
+                              Rs. {(s.deduction ?? 0).toFixed(0)}
+                            </span>
+                          </div>
+                          <div className="home-emp-stat">
+                            <span className="home-emp-stat-label">
+                              Late/Absent
+                            </span>
+                            <span className="home-emp-stat-value">
+                              {s.lateCount ?? 0} / {s.absentCount ?? 0}
+                            </span>
+                          </div>
+                          <div className="home-emp-stat">
+                            <span className="home-emp-stat-label">Offs</span>
+                            <span className="home-emp-stat-value">
+                              {s.offEquivalents ?? 0}
+                            </span>
+                          </div>
                         </div>
-                        <div className="home-emp-stat">
-                          <span className="home-emp-stat-label">
-                            Late/Absent
-                          </span>
-                          <span className="home-emp-stat-value">
-                            {s.lateCount ?? 0} / {s.absentCount ?? 0}
-                          </span>
-                        </div>
-                        <div className="home-emp-stat">
-                          <span className="home-emp-stat-label">Offs</span>
-                          <span className="home-emp-stat-value">
-                            {s.offEquivalents ?? 0}
-                          </span>
-                        </div>
-                      </div>
+                      )}
                     </div>
                   );
                 })}
@@ -1114,18 +1146,24 @@ function Home() {
                           <td>{displayNameFor(emp)}</td>
                           <td>{emp.email || "—"}</td>
                           <td>
-                            <span
-                              style={{
-                                cursor: "pointer",
-                                textDecoration: "underline",
-                                color:
-                                  emp.role === "admin" ? "#a78bfa" : "inherit",
-                              }}
-                              title="Click to switch role (Admin / Employee)"
-                              onClick={() => handleToggleRole(emp)}
-                            >
-                              {emp.role || "employee"}
-                            </span>
+                            {emp.isAttendanceExempt ? (
+                              <span style={{ color: "#c4b5fd" }}>
+                                {emp.designation || "Office Boy"} (Payroll Only)
+                              </span>
+                            ) : (
+                              <span
+                                style={{
+                                  cursor: "pointer",
+                                  textDecoration: "underline",
+                                  color:
+                                    emp.role === "admin" ? "#a78bfa" : "inherit",
+                                }}
+                                title="Click to switch role (Admin / Employee)"
+                                onClick={() => handleToggleRole(emp)}
+                              >
+                                {emp.role || "employee"}
+                              </span>
+                            )}
                           </td>
                           <td>{emp.personalInfo?.phone || "—"}</td>
                           <td>{emp.personalInfo?.cnic || "—"}</td>

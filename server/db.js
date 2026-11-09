@@ -99,6 +99,14 @@ async function initDb() {
   `);
 
   await query(`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS is_attendance_exempt BOOLEAN NOT NULL DEFAULT FALSE;
+  `);
+
+  await query(`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS designation TEXT DEFAULT '';
+  `);
+
+  await query(`
     CREATE TABLE IF NOT EXISTS attendance (
       id TEXT PRIMARY KEY,
       uid TEXT NOT NULL REFERENCES users(uid) ON DELETE CASCADE,
@@ -109,8 +117,23 @@ async function initDb() {
       status TEXT NOT NULL DEFAULT 'on-time',
       late_minutes INTEGER NOT NULL DEFAULT 0,
       marked_by TEXT,
+      is_edited BOOLEAN NOT NULL DEFAULT FALSE,
+      edited_by TEXT DEFAULT '',
+      edited_at TIMESTAMPTZ,
       UNIQUE(uid, date)
     );
+  `);
+
+  await query(`
+    ALTER TABLE attendance ADD COLUMN IF NOT EXISTS is_edited BOOLEAN NOT NULL DEFAULT FALSE;
+  `);
+
+  await query(`
+    ALTER TABLE attendance ADD COLUMN IF NOT EXISTS edited_by TEXT DEFAULT '';
+  `);
+
+  await query(`
+    ALTER TABLE attendance ADD COLUMN IF NOT EXISTS edited_at TIMESTAMPTZ;
   `);
 
   await query(`
@@ -200,6 +223,8 @@ function mapUserRow(row) {
     fullName: row.full_name || row.name || "",
     email: row.email,
     role: row.role || "employee",
+    designation: row.designation || "",
+    isAttendanceExempt: Boolean(row.is_attendance_exempt),
     isActive: row.is_active !== false,
     salary: Number(row.salary) || 0,
     profileComplete: Boolean(row.profile_complete),
@@ -240,6 +265,9 @@ function mapAttendanceRow(row) {
     status: row.status,
     lateMinutes: Number(row.late_minutes) || 0,
     markedBy: row.marked_by,
+    isEdited: Boolean(row.is_edited),
+    editedBy: row.edited_by || "",
+    editedAt: row.edited_at || null,
   };
 }
 

@@ -217,6 +217,20 @@ export async function updateUserById(uid, payload) {
   return data.user;
 }
 
+export async function createPayrollStaff(payload) {
+  const data = await apiRequest("/users/payroll-staff", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return data.user;
+}
+
+export async function deleteUserById(uid) {
+  return apiRequest(`/users/${uid}`, {
+    method: "DELETE",
+  });
+}
+
 // -----------------------------------------
 // Attendance API
 // -----------------------------------------
@@ -234,6 +248,14 @@ export async function markEmployeeAttendance({ uid, date, month }) {
   const data = await apiRequest("/attendance/mark", {
     method: "POST",
     body: JSON.stringify({ uid, date, month }),
+  });
+  return data.record;
+}
+
+export async function editEmployeeAttendanceTime({ uid, date, time }) {
+  const data = await apiRequest("/attendance/edit-time", {
+    method: "PUT",
+    body: JSON.stringify({ uid, date, time }),
   });
   return data.record;
 }

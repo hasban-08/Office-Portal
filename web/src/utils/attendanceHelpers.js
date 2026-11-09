@@ -21,6 +21,24 @@ export const LATES_PER_OFF = 3;         // default: 3 Late = 1 Off
 export const EXTREME_LATES_PER_OFF = 0; // default: 0 (No Off counted on Extreme Late unless set by Admin)
 export const EARLY_LEAVES_PER_OFF = 0;  // default: 0 (No Off counted on Early Leave unless set by Admin)
 
+export const STATUS = {
+  ON_TIME: "on-time",
+  LATE: "late",
+  EXTREME_LATE: "extreme-late",
+  UNSCHEDULED: "unscheduled",
+};
+
+// DB mein status ka format kuch bhi ho (on_time, ontime, On-Time), ye normalize karega
+export function normalizeStatus(value) {
+  if (!value || typeof value !== "string") return null;
+  const v = value.trim().toLowerCase().replace(/[_\s]+/g, "-");
+  if (v === "ontime" || v === "on-time") return STATUS.ON_TIME;
+  if (v === "late") return STATUS.LATE;
+  if (v === "extreme-late" || v === "extremelate") return STATUS.EXTREME_LATE;
+  if (v === "unscheduled") return STATUS.UNSCHEDULED;
+  return null;
+}
+
 export function getActivePolicies(override = null) {
   const cached = getCachedPolicies();
   const merged = { ...cached, ...(override || {}) };
@@ -124,61 +142,123 @@ export function parseScheduleTime(value) {
 
 export function calculateAttendanceStatus(
   schedule,
-  checkInDate = new Date(),
+  checkInInput = new Date(),
   policyOverride = null
 ) {
+  // Postgres se timestamp string aata hai, isliye Date mein convert karna zaroori hai
+  const checkInDate =
+    checkInInput instanceof Date ? checkInInput : new Date(checkInInput);
+
+  if (Number.isNaN(checkInDate.getTime())) {
+    return { status: STATUS.UNSCHEDULED, lateMinutes: 0, weekdayKey: null };
+  }
+
   const activePolicy = getActivePolicies(policyOverride);
-  const weekdayKey = getWeekdayKey(checkInDate);
+
+  // Always evaluate in Pakistan Standard Time (UTC+05:00)
+  const pktTime = new Date(checkInDate.getTime() + 5 * 60 * 60 * 1000);
+  const weekdayKey = WEEKDAY_KEYS[pktTime.getUTCDay()];
+  if (weekdayKey === "sun") {
+    return { status: STATUS.ON_TIME, lateMinutes: 0, weekdayKey };
+  }
+
   const rawTime = schedule?.[weekdayKey];
 
-  // Schedule mein is din ka time nahi hai (off day)
+  // Schedule mein is din ka time missing hai: ab on-time nahi, unscheduled
   if (!rawTime) {
-    return { status: "on-time", lateMinutes: 0, weekdayKey };
+    return { status: STATUS.UNSCHEDULED, lateMinutes: 0, weekdayKey };
   }
 
   const parsed = parseScheduleTime(rawTime);
   if (!parsed) {
     console.warn("Schedule time parse nahi hua:", rawTime, weekdayKey);
-    return { status: "unscheduled", lateMinutes: 0, weekdayKey };
+    return { status: STATUS.UNSCHEDULED, lateMinutes: 0, weekdayKey };
   }
 
-  const expectedDate = new Date(checkInDate);
-  expectedDate.setHours(parsed.h, parsed.m, 0, 0);
+  const expectedTotalMinutes = parsed.h * 60 + parsed.m;
+  const graceCutoffMinutes = expectedTotalMinutes + activePolicy.graceMinutes;
 
-  const graceDate = new Date(
-    expectedDate.getTime() + activePolicy.graceMinutes * 60000
-  );
+  const checkInTotalMinutes =
+    pktTime.getUTCHours() * 60 +
+    pktTime.getUTCMinutes() +
+    pktTime.getUTCSeconds() / 60;
 
-  if (checkInDate <= graceDate) {
-    return { status: "on-time", lateMinutes: 0, weekdayKey };
+  if (checkInTotalMinutes <= graceCutoffMinutes) {
+    return { status: STATUS.ON_TIME, lateMinutes: 0, weekdayKey };
   }
 
-  const lateMinutes = Math.round(
-    (checkInDate.getTime() - graceDate.getTime()) / 60000
+  const lateMinutes = Math.max(
+    1,
+    Math.round(checkInTotalMinutes - graceCutoffMinutes)
   );
 
-  const status =
-    lateMinutes > activePolicy.extremeLateAfterGraceMinutes
-      ? "extreme-late"
-      : "late";
+  const useExtremeLate =
+    activePolicy.extremeLatesPerOff > 0 &&
+    lateMinutes > activePolicy.extremeLateAfterGraceMinutes;
+
+  const status = useExtremeLate ? STATUS.EXTREME_LATE : STATUS.LATE;
 
   return { status, lateMinutes, weekdayKey };
 }
 
-export function statusLabel(record) {
-  if (record?.status === "unscheduled") {
-    return "Schedule Missing";
+export function resolveRecordWithSchedule(
+  record,
+  schedule,
+  policyOverride = null
+) {
+  if (!record) return record;
+  const activePolicy = getActivePolicies(policyOverride);
+
+  if (schedule && record.checkInTime) {
+    const calc = calculateAttendanceStatus(
+      schedule,
+      record.checkInTime,
+      activePolicy
+    );
+    if (calc.status && calc.status !== STATUS.UNSCHEDULED) {
+      return {
+        ...record,
+        status: calc.status,
+        lateMinutes: calc.lateMinutes,
+      };
+    }
   }
 
-  if (record?.status === "extreme-late") {
+  const norm = normalizeStatus(record.status) || STATUS.ON_TIME;
+  if (norm === STATUS.EXTREME_LATE && activePolicy.extremeLatesPerOff <= 0) {
+    return {
+      ...record,
+      status: STATUS.LATE,
+    };
+  }
+
+  return {
+    ...record,
+    status: norm,
+  };
+}
+
+export function statusLabel(record) {
+  const status = normalizeStatus(record?.status);
+
+  if (status === STATUS.EXTREME_LATE) {
     return `Extreme Late (${record.lateMinutes ?? 0} min)`;
   }
 
-  if (record?.status === "late") {
+  if (status === STATUS.LATE) {
     return `Late (${record.lateMinutes ?? 0} min)`;
   }
 
-  return "On time";
+  if (status === STATUS.UNSCHEDULED) {
+    return "Schedule Missing";
+  }
+
+  if (status === STATUS.ON_TIME) {
+    return "On time";
+  }
+
+  // Status save hi nahi hua, ya format samajh nahi aaya
+  return "Status not set";
 }
 
 export function countWorkingDaysSoFar(schedule, referenceDate = new Date()) {
@@ -339,6 +419,7 @@ export function calculateSalaryStats({
   approvedLeaves = [],
   policies = null,
   holidays = null,
+  isAttendanceExempt = false,
 }) {
   const activePolicy = getActivePolicies(policies);
   const holidayMap = getActiveHolidayMap(holidays);
@@ -351,22 +432,66 @@ export function calculateSalaryStats({
 
   const base = Number(baseSalary) || 0;
 
+  if (isAttendanceExempt) {
+    return {
+      baseSalary: base,
+      isAttendanceExempt: true,
+      presentCount: 0,
+      onTimeCount: 0,
+      lateCount: 0,
+      extremeLateCount: 0,
+      unscheduledCount: 0,
+      absentCount: 0,
+      approvedLeaveCount: 0,
+      officialHolidayCount: 0,
+      earlyLeaveCount: 0,
+      offFromLates: 0,
+      offFromExtremeLates: 0,
+      offFromEarlyLeaves: 0,
+      offEquivalents: 0,
+      freeOffsAllowed: activePolicy.freeOffsPerMonth,
+      latesPerOff: activePolicy.latesPerOff,
+      extremeLatesPerOff: activePolicy.extremeLatesPerOff,
+      earlyLeavesPerOff: activePolicy.earlyLeavesPerOff,
+      graceMinutes: activePolicy.graceMinutes,
+      extremeLateAfterGraceMinutes: activePolicy.extremeLateAfterGraceMinutes,
+      deductibleOffs: 0,
+      perDayRate: 0,
+      absentDeductionGross: 0,
+      lateDeductionGross: 0,
+      earlyLeaveDeductionGross: 0,
+      freeOffCredit: 0,
+      deduction: 0,
+      netSalary: base,
+      workingDaysInMonth: 0,
+      workingDaysSoFar: 0,
+    };
+  }
+
+  const normalized = records.map((record) => {
+    const resolved = resolveRecordWithSchedule(record, schedule, activePolicy);
+    return {
+      ...resolved,
+      _status: normalizeStatus(resolved.status) || STATUS.ON_TIME,
+    };
+  });
+
   const presentCount = records.length;
 
-  const onTimeCount = records.filter(
-    (record) => !record.status || record.status === "on-time"
+  const onTimeCount = normalized.filter(
+    (r) => r._status === STATUS.ON_TIME
   ).length;
 
-  const lateCount = records.filter(
-    (record) => record.status === "late"
+  const lateCount = normalized.filter(
+    (r) => r._status === STATUS.LATE
   ).length;
 
-  const extremeLateCount = records.filter(
-    (record) => record.status === "extreme-late"
+  const extremeLateCount = normalized.filter(
+    (r) => r._status === STATUS.EXTREME_LATE
   ).length;
 
-  const unscheduledCount = records.filter(
-    (record) => record.status === "unscheduled"
+  const unscheduledCount = normalized.filter(
+    (r) => r._status === STATUS.UNSCHEDULED
   ).length;
 
   const scheduledDates = getScheduledDatesUpTo(

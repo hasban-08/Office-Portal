@@ -50,8 +50,9 @@ function AdminAttendance() {
       try {
         const list = await fetchUsers();
         if (cancelled) return;
-        setEmployees(list);
-        if (list.length > 0) setSelectedUid((prev) => prev || list[0].uid);
+        const activeAttList = (list || []).filter((e) => !e.isAttendanceExempt);
+        setEmployees(activeAttList);
+        if (activeAttList.length > 0) setSelectedUid((prev) => prev || activeAttList[0].uid);
       } catch (err) {
         if (err?.name !== "AbortError" && !cancelled) setError(err.message);
       } finally {

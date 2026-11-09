@@ -271,6 +271,7 @@ export async function exportDailyToPDF(rows, filename, dateLabel) {
 export function exportPayrollToExcel(rows, filename) {
   const data = rows.map((r) => ({
     Employee: r.name || "—",
+    CNIC: r.cnic || "—",
     Month: r.month || "—",
     "Base Salary (Rs.)": Math.round(r.baseSalary ?? 0),
     Present: r.presentCount ?? 0,
@@ -304,6 +305,7 @@ export function exportPayrollToCSV(rows, filename) {
   const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
   const headers = [
     "Employee",
+    "CNIC",
     "Month",
     "Base Salary",
     "Present",
@@ -323,6 +325,7 @@ export function exportPayrollToCSV(rows, filename) {
     .map((r) =>
       [
         r.name || "—",
+        r.cnic || "—",
         r.month || "—",
         Math.round(r.baseSalary ?? 0),
         r.presentCount ?? 0,
@@ -368,7 +371,7 @@ export async function exportPayrollToPDF(rows, filename, monthLabel) {
   const startY = drawCompanyHeader(
     pdfDoc,
     `Monthly Payroll Statement — ${monthLabel}`,
-    `Total Employees: ${rows.length}   |   Total Deductions: Rs. ${Math.round(totalDeducted).toLocaleString()}   |   Total Net Payroll: Rs. ${Math.round(totalNet).toLocaleString()}`
+    `Total Staff: ${rows.length}   |   Total Deductions: Rs. ${Math.round(totalDeducted).toLocaleString()}   |   Total Net Payroll: Rs. ${Math.round(totalNet).toLocaleString()}`
   );
 
   autoTable(pdfDoc, {
@@ -376,6 +379,7 @@ export async function exportPayrollToPDF(rows, filename, monthLabel) {
     head: [
       [
         "Employee",
+        "CNIC",
         "Base Salary",
         "Present",
         "Late / Ext",
@@ -391,9 +395,10 @@ export async function exportPayrollToPDF(rows, filename, monthLabel) {
     ],
     body: rows.map((r) => [
       r.name || "—",
+      r.cnic || "—",
       `Rs. ${Math.round(r.baseSalary ?? 0).toLocaleString()}`,
       r.presentCount ?? 0,
-      `${r.lateCount ?? 0} / ${r.extremeLateCount ?? 0}`,
+      r.isAttendanceExempt ? "Exempt" : `${r.lateCount ?? 0} / ${r.extremeLateCount ?? 0}`,
       r.absentCount ?? 0,
       r.deductibleOffs ?? 0,
       `Rs. ${Math.round(r.deduction ?? 0).toLocaleString()}`,
@@ -403,7 +408,7 @@ export async function exportPayrollToPDF(rows, filename, monthLabel) {
       r.accountTitle || "—",
       r.accountNumber || "—",
     ]),
-    styles: { fontSize: 7.5, cellPadding: 2.2, textColor: THEME_DARK },
+    styles: { fontSize: 7, cellPadding: 2, textColor: THEME_DARK },
     headStyles: { fillColor: THEME_DARK, textColor: 255, fontStyle: "bold" },
     alternateRowStyles: { fillColor: THEME_LIGHT_ROW },
   });
@@ -460,6 +465,8 @@ export async function exportEmployeeSalarySlipPDF({ employee, stats, month }) {
     `Payroll Month: ${month}   |   Employee: ${empName}`
   );
 
+  const isExempt = Boolean(employee?.isAttendanceExempt || stats?.isAttendanceExempt);
+
   // Employee & Bank Info Table
   autoTable(pdfDoc, {
     startY,
@@ -472,8 +479,8 @@ export async function exportEmployeeSalarySlipPDF({ employee, stats, month }) {
         (employee?.bankDetails?.method || "Bank").toUpperCase(),
       ],
       [
-        "Email",
-        employee?.email || "—",
+        isExempt ? "Designation" : "Email",
+        isExempt ? (employee?.designation || "Office Boy") : (employee?.email || "—"),
         "Bank / Wallet",
         employee?.bankDetails?.providerName || "—",
       ],
@@ -498,122 +505,157 @@ export async function exportEmployeeSalarySlipPDF({ employee, stats, month }) {
     },
   });
 
-  // Attendance & Off-Equivalents Summary Table
-  const attStartY = (pdfDoc.lastAutoTable?.finalY || startY + 35) + 6;
-  autoTable(pdfDoc, {
-    startY: attStartY,
-    head: [["Attendance Metric", "Count", "Company Policy Rule", "Off-Equivalent Impact"]],
-    body: [
-      [
-        "Scheduled Working Days (Month)",
-        stats.workingDaysInMonth ?? 0,
-        "Standard monthly schedule",
-        `Per-Day Rate: Rs. ${Math.round(stats.perDayRate ?? 0).toLocaleString()}`,
+  if (isExempt) {
+    const salStartY = (pdfDoc.lastAutoTable?.finalY || startY + 35) + 6;
+    autoTable(pdfDoc, {
+      startY: salStartY,
+      head: [["Support Staff Payroll Summary", "Policy / Status", "Amount (PKR)"]],
+      body: [
+        [
+          "Attendance Policy",
+          `${employee?.designation || "Office Boy"} — Exempt from Daily Check-in & Attendance Deductions`,
+          "Rs. 0 Deduction",
+        ],
+        [
+          "Monthly Base Salary",
+          "Fixed Monthly Payroll",
+          `Rs. ${Math.round(stats.baseSalary ?? employee?.salary ?? 0).toLocaleString()}`,
+        ],
+        [
+          "NET PAYABLE SALARY",
+          `For Month ${month}`,
+          `Rs. ${Math.round(stats.netSalary ?? employee?.salary ?? 0).toLocaleString()}`,
+        ],
       ],
-      [
-        "Days Present (Total)",
-        stats.presentCount ?? 0,
-        `On-time arrivals: ${stats.onTimeCount ?? 0}`,
-        "0 Offs",
+      styles: { fontSize: 9, cellPadding: 3, textColor: THEME_DARK },
+      headStyles: { fillColor: THEME_DARK, textColor: 255 },
+      didParseCell: (data) => {
+        if (data.section === "body" && data.row.index === 2) {
+          data.cell.styles.fillColor = THEME_DARK;
+          data.cell.styles.textColor = [255, 255, 255];
+          data.cell.styles.fontStyle = "bold";
+          data.cell.styles.fontSize = 10;
+        }
+      },
+    });
+  } else {
+    // Attendance & Off-Equivalents Summary Table
+    const attStartY = (pdfDoc.lastAutoTable?.finalY || startY + 35) + 6;
+    autoTable(pdfDoc, {
+      startY: attStartY,
+      head: [["Attendance Metric", "Count", "Company Policy Rule", "Off-Equivalent Impact"]],
+      body: [
+        [
+          "Scheduled Working Days (Month)",
+          stats.workingDaysInMonth ?? 0,
+          "Standard monthly schedule",
+          `Per-Day Rate: Rs. ${Math.round(stats.perDayRate ?? 0).toLocaleString()}`,
+        ],
+        [
+          "Days Present (Total)",
+          stats.presentCount ?? 0,
+          `On-time arrivals: ${stats.onTimeCount ?? 0}`,
+          "0 Offs",
+        ],
+        [
+          `Late Arrivals (> ${graceMinutes}m grace)`,
+          stats.lateCount ?? 0,
+          latesPerOff > 0 ? `${latesPerOff} Lates = 1 Off` : "No Off Counted",
+          `${stats.offFromLates ?? 0} Off(s)`,
+        ],
+        [
+          `Extreme Late Arrivals (> ${extremeWindow}m)`,
+          stats.extremeLateCount ?? 0,
+          extremeLatesPerOff > 0
+            ? `${extremeLatesPerOff} Extreme Late(s) = 1 Off`
+            : "No Off Counted",
+          `${offFromExtremeLates} Off(s)`,
+        ],
+        [
+          "Early Leaves (Approved)",
+          stats.earlyLeaveCount ?? 0,
+          earlyLeavesPerOff > 0
+            ? `${earlyLeavesPerOff} Early Leaves = 1 Off`
+            : "No Off Counted",
+          `${stats.offFromEarlyLeaves ?? 0} Off(s)`,
+        ],
+        [
+          "Unapproved Absences (Offs)",
+          stats.absentCount ?? 0,
+          "1 Absent = 1 Off (Sunday Off)",
+          `${stats.absentCount ?? 0} Off(s)`,
+        ],
+        [
+          "Approved Leaves / Official Holidays",
+          (stats.approvedLeaveCount ?? 0) + (stats.officialHolidayCount ?? 0),
+          "Approved by Admin / Company Off",
+          "0 Offs (Exempt)",
+        ],
       ],
-      [
-        `Late Arrivals (> ${graceMinutes}m grace)`,
-        stats.lateCount ?? 0,
-        latesPerOff > 0 ? `${latesPerOff} Lates = 1 Off` : "No Off Counted",
-        `${stats.offFromLates ?? 0} Off(s)`,
-      ],
-      [
-        `Extreme Late Arrivals (> ${extremeWindow}m)`,
-        stats.extremeLateCount ?? 0,
-        extremeLatesPerOff > 0
-          ? `${extremeLatesPerOff} Extreme Late(s) = 1 Off`
-          : "No Off Counted",
-        `${offFromExtremeLates} Off(s)`,
-      ],
-      [
-        "Early Leaves (Approved)",
-        stats.earlyLeaveCount ?? 0,
-        earlyLeavesPerOff > 0
-          ? `${earlyLeavesPerOff} Early Leaves = 1 Off`
-          : "No Off Counted",
-        `${stats.offFromEarlyLeaves ?? 0} Off(s)`,
-      ],
-      [
-        "Unapproved Absences (Offs)",
-        stats.absentCount ?? 0,
-        "1 Absent = 1 Off (Sunday Off)",
-        `${stats.absentCount ?? 0} Off(s)`,
-      ],
-      [
-        "Approved Leaves / Official Holidays",
-        (stats.approvedLeaveCount ?? 0) + (stats.officialHolidayCount ?? 0),
-        "Approved by Admin / Company Off",
-        "0 Offs (Exempt)",
-      ],
-    ],
-    styles: { fontSize: 8.5, cellPadding: 2.5, textColor: THEME_DARK },
-    headStyles: { fillColor: THEME_CHARCOAL, textColor: 255 },
-    alternateRowStyles: { fillColor: THEME_LIGHT_ROW },
-  });
+      styles: { fontSize: 8.5, cellPadding: 2.5, textColor: THEME_DARK },
+      headStyles: { fillColor: THEME_CHARCOAL, textColor: 255 },
+      alternateRowStyles: { fillColor: THEME_LIGHT_ROW },
+    });
 
-  // Salary Calculation & Deduction Breakdown Table
-  const salStartY = (pdfDoc.lastAutoTable?.finalY || attStartY + 55) + 6;
-  autoTable(pdfDoc, {
-    startY: salStartY,
-    head: [["Salary & Deduction Breakdown", "Calculation", "Amount (PKR)"]],
-    body: [
-      [
-        "Monthly Base Salary",
-        `${stats.workingDaysInMonth ?? 0} working days @ Rs. ${Math.round(stats.perDayRate ?? 0).toLocaleString()}/day`,
-        `Rs. ${Math.round(stats.baseSalary ?? employee?.salary ?? 0).toLocaleString()}`,
+    // Salary Calculation & Deduction Breakdown Table
+    const salStartY = (pdfDoc.lastAutoTable?.finalY || attStartY + 55) + 6;
+    autoTable(pdfDoc, {
+      startY: salStartY,
+      head: [["Salary & Deduction Breakdown", "Calculation", "Amount (PKR)"]],
+      body: [
+        [
+          "Monthly Base Salary",
+          `${stats.workingDaysInMonth ?? 0} working days @ Rs. ${Math.round(stats.perDayRate ?? 0).toLocaleString()}/day`,
+          `Rs. ${Math.round(stats.baseSalary ?? employee?.salary ?? 0).toLocaleString()}`,
+        ],
+        [
+          "Absent / Unapproved Off Deduction (Gross)",
+          `${stats.absentCount ?? 0} absent(s) × Rs. ${Math.round(stats.perDayRate ?? 0).toLocaleString()}`,
+          `- Rs. ${Math.round(stats.absentDeductionGross ?? 0).toLocaleString()}`,
+        ],
+        [
+          "Late & Extreme-Late Deduction (Gross)",
+          `${(stats.offFromLates ?? 0) + offFromExtremeLates} off-eq (${stats.lateCount ?? 0} late, ${stats.extremeLateCount ?? 0} ext. late)`,
+          `- Rs. ${Math.round(stats.lateDeductionGross ?? 0).toLocaleString()}`,
+        ],
+        [
+          "Early Leave Deduction (Gross)",
+          `${stats.offFromEarlyLeaves ?? 0} off-eq (${stats.earlyLeaveCount ?? 0} early leaves)`,
+          `- Rs. ${Math.round(stats.earlyLeaveDeductionGross ?? 0).toLocaleString()}`,
+        ],
+        [
+          `Monthly Free Offs Relief (${freeOffsAllowed} Free Offs Allowed)`,
+          `Up to ${freeOffsAllowed} off-equivalent(s) waived per month`,
+          `+ Rs. ${Math.round(stats.freeOffCredit ?? 0).toLocaleString()}`,
+        ],
+        [
+          "Total Deductible Offs & Final Salary Cut",
+          `${stats.deductibleOffs ?? 0} net deductible off(s) (out of ${stats.offEquivalents ?? 0} total off-eq)`,
+          `- Rs. ${Math.round(stats.deduction ?? 0).toLocaleString()}`,
+        ],
+        [
+          "NET PAYABLE SALARY",
+          `For Month ${month}`,
+          `Rs. ${Math.round(stats.netSalary ?? 0).toLocaleString()}`,
+        ],
       ],
-      [
-        "Absent / Unapproved Off Deduction (Gross)",
-        `${stats.absentCount ?? 0} absent(s) × Rs. ${Math.round(stats.perDayRate ?? 0).toLocaleString()}`,
-        `- Rs. ${Math.round(stats.absentDeductionGross ?? 0).toLocaleString()}`,
-      ],
-      [
-        "Late & Extreme-Late Deduction (Gross)",
-        `${(stats.offFromLates ?? 0) + offFromExtremeLates} off-eq (${stats.lateCount ?? 0} late, ${stats.extremeLateCount ?? 0} ext. late)`,
-        `- Rs. ${Math.round(stats.lateDeductionGross ?? 0).toLocaleString()}`,
-      ],
-      [
-        "Early Leave Deduction (Gross)",
-        `${stats.offFromEarlyLeaves ?? 0} off-eq (${stats.earlyLeaveCount ?? 0} early leaves)`,
-        `- Rs. ${Math.round(stats.earlyLeaveDeductionGross ?? 0).toLocaleString()}`,
-      ],
-      [
-        `Monthly Free Offs Relief (${freeOffsAllowed} Free Offs Allowed)`,
-        `Up to ${freeOffsAllowed} off-equivalent(s) waived per month`,
-        `+ Rs. ${Math.round(stats.freeOffCredit ?? 0).toLocaleString()}`,
-      ],
-      [
-        "Total Deductible Offs & Final Salary Cut",
-        `${stats.deductibleOffs ?? 0} net deductible off(s) (out of ${stats.offEquivalents ?? 0} total off-eq)`,
-        `- Rs. ${Math.round(stats.deduction ?? 0).toLocaleString()}`,
-      ],
-      [
-        "NET PAYABLE SALARY",
-        `For Month ${month}`,
-        `Rs. ${Math.round(stats.netSalary ?? 0).toLocaleString()}`,
-      ],
-    ],
-    styles: { fontSize: 9, cellPadding: 3, textColor: THEME_DARK },
-    headStyles: { fillColor: THEME_DARK, textColor: 255 },
-    didParseCell: (data) => {
-      if (data.section === "body" && data.row.index === 6) {
-        data.cell.styles.fillColor = THEME_DARK;
-        data.cell.styles.textColor = [255, 255, 255];
-        data.cell.styles.fontStyle = "bold";
-        data.cell.styles.fontSize = 10;
-      } else if (data.section === "body" && data.row.index === 5) {
-        data.cell.styles.fontStyle = "bold";
-      }
-    },
-  });
+      styles: { fontSize: 9, cellPadding: 3, textColor: THEME_DARK },
+      headStyles: { fillColor: THEME_DARK, textColor: 255 },
+      didParseCell: (data) => {
+        if (data.section === "body" && data.row.index === 6) {
+          data.cell.styles.fillColor = THEME_DARK;
+          data.cell.styles.textColor = [255, 255, 255];
+          data.cell.styles.fontStyle = "bold";
+          data.cell.styles.fontSize = 10;
+        } else if (data.section === "body" && data.row.index === 5) {
+          data.cell.styles.fontStyle = "bold";
+        }
+      },
+    });
+  }
 
   // Footer signature line
-  const finalY = (pdfDoc.lastAutoTable?.finalY || salStartY + 60) + 14;
+  const finalY = (pdfDoc.lastAutoTable?.finalY || startY + 95) + 14;
   pdfDoc.setFontSize(8.5);
   pdfDoc.setTextColor(100, 116, 139);
   pdfDoc.text(

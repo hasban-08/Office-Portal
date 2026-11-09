@@ -9,6 +9,7 @@ import {
   createHoliday,
   deleteHoliday,
   markEmployeeAttendance,
+  editEmployeeAttendanceTime,
 } from "../api";
 import {
   exportDailyToExcel,
@@ -24,6 +25,7 @@ import {
   getLocalDateStr,
   getLocalMonthStr,
   calculateAttendanceStatus,
+  resolveRecordWithSchedule,
   getApprovedLeaveDates,
   getActiveHolidayMap,
 } from "../utils/attendanceHelpers";
@@ -58,11 +60,14 @@ function DailyAttendance() {
   const [loading, setLoading] = useState(true);
   const [busyUid, setBusyUid] = useState(null);
   const [error, setError] = useState("");
+  const [editModal, setEditModal] = useState(null); // { uid, name, time }
+  const [editSaving, setEditSaving] = useState(false);
   const navigate = useNavigate();
 
   const currentUser = getCurrentUser();
   const myUid = currentUser?.uid;
   const isToday = selectedDate === todayStr;
+  const isPastOrToday = selectedDate <= todayStr;
 
   useEffect(() => {
     let cancelled = false;
@@ -79,7 +84,7 @@ function DailyAttendance() {
         ]);
         if (cancelled) return;
 
-        setEmployees(usersList);
+        setEmployees((usersList || []).filter((u) => !u.isAttendanceExempt));
         setHolidays(holidayList || []);
 
         const att = {};
@@ -168,8 +173,55 @@ function DailyAttendance() {
     }
   };
 
+  const openEditTimeModal = (row) => {
+    if (row.isEdited) {
+      window.alert("Is din ki attendance pehle hi 1 dafa edit ho chuki hai. Dobara edit nahi ho sakti.");
+      return;
+    }
+    let defaultTime = "10:00";
+    if (row.rawCheckInTime) {
+      const d = new Date(row.rawCheckInTime);
+      if (!isNaN(d.getTime())) {
+        const pkt = new Date(d.getTime() + 5 * 60 * 60 * 1000);
+        const hh = String(pkt.getUTCHours()).padStart(2, "0");
+        const mm = String(pkt.getUTCMinutes()).padStart(2, "0");
+        defaultTime = `${hh}:${mm}`;
+      }
+    } else if (row.emp?.schedule?.[weekdayKey]) {
+      defaultTime = row.emp.schedule[weekdayKey];
+    }
+    setEditModal({
+      uid: row.uid,
+      name: row.name,
+      time: defaultTime,
+    });
+  };
+
+  const handleSaveEditTime = async (e) => {
+    e.preventDefault();
+    if (!editModal || !editModal.time) return;
+    setEditSaving(true);
+    try {
+      const updatedRecord = await editEmployeeAttendanceTime({
+        uid: editModal.uid,
+        date: selectedDate,
+        time: editModal.time,
+      });
+      setAttByUid((prev) => ({
+        ...prev,
+        [editModal.uid]: updatedRecord,
+      }));
+      setEditModal(null);
+    } catch (err) {
+      window.alert(err.message || "Attendance time edit nahi ho saka.");
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
   const rows = employees.map((emp) => {
-    const record = attByUid[emp.uid];
+    const rawRecord = attByUid[emp.uid];
+    const record = rawRecord ? resolveRecordWithSchedule(rawRecord, emp.schedule) : null;
     const isScheduled = isScheduledWorkday(emp.schedule, selectedDateObj);
     const onLeave = getApprovedLeaveDates(emp.schedule, leavesByUid[emp.uid] || []).has(selectedDate);
 
@@ -181,6 +233,9 @@ function DailyAttendance() {
       isMe: emp.uid === myUid,
       checkedIn: false,
       time: null,
+      rawCheckInTime: null,
+      isEdited: false,
+      editedBy: "",
       early:
         (leavesByUid[emp.uid] || []).find(
           (l) => l.type === "earlyLeave" && l.date === selectedDate
@@ -192,6 +247,9 @@ function DailyAttendance() {
         ...base,
         checkedIn: true,
         time: formatTime12(record.checkInTime),
+        rawCheckInTime: record.checkInTime,
+        isEdited: Boolean(record.isEdited),
+        editedBy: record.editedBy || "",
         displayStatus: statusLabel(record),
         statusKind: record.status,
       };
@@ -251,7 +309,7 @@ function DailyAttendance() {
 
   const exportRows = rows.map((r) => ({
     name: r.name,
-    displayStatus: r.displayStatus,
+    displayStatus: r.editedBy ? `${r.displayStatus} (${r.editedBy})` : r.displayStatus,
     time: r.time,
   }));
 
@@ -278,7 +336,7 @@ function DailyAttendance() {
         <p className="daily-hero-date">{isToday ? "Today" : selectedDate}</p>
         <h1 className="daily-hero-title">Mark and review attendance</h1>
         <p className="daily-hero-sub">
-          Pehle apna check-in karo, phir har employee ko aate hi mark karo.
+          Pehle apna check-in karo, phir har employee ko aate hi mark karo. Agar ghalti se mark karna bhool gaye ya time theek karna ho to 1 dafa Edit Time use karein.
         </p>
       </section>
 
@@ -286,7 +344,7 @@ function DailyAttendance() {
         {me && (
           <div className="daily-me-card">
             <div>
-              <p className="daily-me-label">Your check-in</p>
+              <p className="daily-me-label">Your check-in ({selectedDate})</p>
               <p className={`daily-me-status ${statusClass(me.statusKind)}`}>
                 {me.checkedIn
                   ? `${me.displayStatus} · ${me.time}`
@@ -294,16 +352,55 @@ function DailyAttendance() {
                     ? "Not checked in yet"
                     : me.displayStatus}
               </p>
+              {me.editedBy && (
+                <small style={{ display: "block", color: "#c4b5fd", marginTop: "4px", fontSize: "11.5px" }}>
+                  {me.editedBy}
+                </small>
+              )}
             </div>
-            {isToday && !me.checkedIn && (
-              <button
-                className="daily-checkin-btn"
-                disabled={busyUid === me.uid}
-                onClick={() => markAttendance(me.emp)}
-              >
-                {busyUid === me.uid ? "Saving..." : "Check in"}
-              </button>
-            )}
+            <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+              {isToday && !me.checkedIn && (
+                <button
+                  className="daily-checkin-btn"
+                  disabled={busyUid === me.uid}
+                  onClick={() => markAttendance(me.emp)}
+                >
+                  {busyUid === me.uid ? "Saving..." : "Check in"}
+                </button>
+              )}
+              {isPastOrToday && (
+                me.isEdited ? (
+                  <span
+                    style={{
+                      fontSize: "11.5px",
+                      color: "rgba(240,238,255,0.5)",
+                      border: "1px solid rgba(255,255,255,0.14)",
+                      padding: "6px 10px",
+                      borderRadius: "8px",
+                    }}
+                  >
+                    Edited (1/1)
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => openEditTimeModal(me)}
+                    style={{
+                      background: "rgba(167, 139, 250, 0.16)",
+                      border: "1px solid rgba(167, 139, 250, 0.4)",
+                      color: "#e9d5ff",
+                      padding: "8px 12px",
+                      borderRadius: "8px",
+                      fontSize: "12px",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                    }}
+                  >
+                    Edit Time (1x)
+                  </button>
+                )
+              )}
+            </div>
           </div>
         )}
 
@@ -352,7 +449,9 @@ function DailyAttendance() {
           <p className="daily-hint">Employees ke buttons tab chalenge jab tum apna check-in kar loge.</p>
         )}
         {!isToday && (
-          <p className="daily-hint">Purani ya aane wali date sirf dekhne ke liye hai. Check-in sirf aaj ke din hota hai.</p>
+          <p className="daily-hint">
+            Agar kisi employee ki attendance lagana bhool gaye thay to "Edit Time" se sirf 1 dafa attendance time set/edit kar sakte hain.
+          </p>
         )}
 
         {error && <p className="daily-error">Error: {error}</p>}
@@ -371,7 +470,7 @@ function DailyAttendance() {
                     <th>Status</th>
                     <th>Check-in Time</th>
                     <th>Emergency Contact</th>
-                    {isToday && <th data-no-print>Action</th>}
+                    {isPastOrToday && <th data-no-print>Action</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -385,6 +484,14 @@ function DailyAttendance() {
                             Early leave {formatHM12(r.early.earlyLeaveTime)}
                           </small>
                         )}
+                        {r.editedBy && (
+                          <small
+                            className="daily-early-note"
+                            style={{ color: "#c4b5fd", display: "block", marginTop: "3px" }}
+                          >
+                            {r.editedBy}
+                          </small>
+                        )}
                       </td>
                       <td>{r.time || "—"}</td>
                       <td>
@@ -396,20 +503,51 @@ function DailyAttendance() {
                           "—"
                         )}
                       </td>
-                      {isToday && (
+                      {isPastOrToday && (
                         <td data-no-print>
-                          {r.checkedIn ? (
-                            <span className="daily-done">Marked</span>
-                          ) : (
-                            <button
-                              className="daily-checkin-btn small"
-                              disabled={!myCheckedIn || busyUid === r.uid}
-                              title={!myCheckedIn ? "Pehle apna check-in karo" : ""}
-                              onClick={() => markAttendance(r.emp)}
-                            >
-                              {busyUid === r.uid ? "Saving..." : "Check in"}
-                            </button>
-                          )}
+                          <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+                            {isToday && !r.checkedIn && (
+                              <button
+                                className="daily-checkin-btn small"
+                                disabled={!myCheckedIn || busyUid === r.uid}
+                                title={!myCheckedIn ? "Pehle apna check-in karo" : ""}
+                                onClick={() => markAttendance(r.emp)}
+                              >
+                                {busyUid === r.uid ? "Saving..." : "Check in"}
+                              </button>
+                            )}
+                            {r.isEdited ? (
+                              <span
+                                style={{
+                                  fontSize: "11.5px",
+                                  color: "rgba(240,238,255,0.5)",
+                                  border: "1px solid rgba(255,255,255,0.12)",
+                                  padding: "4px 9px",
+                                  borderRadius: "6px",
+                                }}
+                                title={r.editedBy}
+                              >
+                                Edited (1/1)
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => openEditTimeModal(r)}
+                                style={{
+                                  background: "rgba(167, 139, 250, 0.16)",
+                                  border: "1px solid rgba(167, 139, 250, 0.38)",
+                                  color: "#e9d5ff",
+                                  padding: "5px 10px",
+                                  borderRadius: "7px",
+                                  fontSize: "11.5px",
+                                  fontWeight: 600,
+                                  cursor: "pointer",
+                                }}
+                              >
+                                Edit Time
+                              </button>
+                            )}
+                          </div>
                         </td>
                       )}
                     </tr>
@@ -420,6 +558,93 @@ function DailyAttendance() {
           )}
         </div>
       </section>
+
+      {editModal && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0, 0, 0, 0.72)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 9999,
+            padding: "16px",
+          }}
+        >
+          <div
+            style={{
+              background: "#161229",
+              border: "1px solid rgba(167, 139, 250, 0.38)",
+              borderRadius: "16px",
+              maxWidth: "420px",
+              width: "100%",
+              padding: "24px",
+              color: "#f0eeff",
+            }}
+          >
+            <h3 style={{ marginTop: 0, marginBottom: "8px", fontSize: "18px" }}>
+              Edit Check-in Time (One-Time Only)
+            </h3>
+            <p style={{ fontSize: "12.5px", color: "rgba(240, 238, 255, 0.68)", lineHeight: 1.5, margin: "0 0 14px" }}>
+              Employee: <strong>{editModal.name}</strong> · Date: <strong>{selectedDate}</strong>
+              <br />
+              Note: Attendance time sirf <strong>1 dafa</strong> edit ho sakti hai aur uske aage{" "}
+              <strong>Edited by {currentUser?.name || "Admin"}</strong> likha aa jayega.
+            </p>
+            <form onSubmit={handleSaveEditTime} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+              <label style={{ fontSize: "12.5px", display: "flex", flexDirection: "column", gap: "6px" }}>
+                Select Check-in Time
+                <input
+                  type="time"
+                  value={editModal.time}
+                  onChange={(e) => setEditModal((prev) => ({ ...prev, time: e.target.value }))}
+                  required
+                  style={{
+                    background: "rgba(255,255,255,0.08)",
+                    border: "1px solid rgba(255,255,255,0.2)",
+                    borderRadius: "8px",
+                    padding: "10px 12px",
+                    color: "#fff",
+                    fontSize: "14px",
+                  }}
+                />
+              </label>
+              <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end", marginTop: "4px" }}>
+                <button
+                  type="button"
+                  onClick={() => setEditModal(null)}
+                  style={{
+                    background: "rgba(255,255,255,0.08)",
+                    border: "none",
+                    color: "#fff",
+                    padding: "9px 14px",
+                    borderRadius: "8px",
+                    cursor: "pointer",
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={editSaving}
+                  style={{
+                    background: "linear-gradient(135deg, #6d3aff, #a78bfa)",
+                    border: "none",
+                    color: "#fff",
+                    padding: "9px 16px",
+                    borderRadius: "8px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  {editSaving ? "Saving..." : "Save Time (1x Only)"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

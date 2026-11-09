@@ -39,10 +39,12 @@ app.use(express.json({ limit: "10mb" }));
 let dbInitPromise = null;
 function ensureDbInitialized() {
   if (!dbInitPromise) {
-    dbInitPromise = initDb().catch((err) => {
-      dbInitPromise = null;
-      throw err;
-    });
+    dbInitPromise = initDb()
+      .then(() => recalculateAllAttendanceRecords())
+      .catch((err) => {
+        dbInitPromise = null;
+        throw err;
+      });
   }
   return dbInitPromise;
 }
@@ -74,28 +76,81 @@ function calculateAttendanceStatus(schedule, checkInDate = new Date(), policy = 
     policy?.extremeLateAfterGraceMinutes ?? 30
   );
 
-  const weekdayKey = WEEKDAY_KEYS[checkInDate.getDay()];
-  const expectedTime = schedule?.[weekdayKey];
+  const parsed =
+    checkInDate instanceof Date ? checkInDate : new Date(checkInDate);
+  if (Number.isNaN(parsed.getTime())) {
+    return { status: "on-time", lateMinutes: 0, weekdayKey: "mon" };
+  }
 
+  // Always evaluate in Pakistan Standard Time (UTC+05:00) so Vercel UTC and local server match 100%
+  const pktTime = new Date(parsed.getTime() + 5 * 60 * 60 * 1000);
+  const weekdayKey = WEEKDAY_KEYS[pktTime.getUTCDay()];
+  if (weekdayKey === "sun") {
+    return { status: "on-time", lateMinutes: 0, weekdayKey };
+  }
+
+  const expectedTime = schedule?.[weekdayKey];
   if (!expectedTime || !/^\d{1,2}:\d{2}$/.test(expectedTime)) {
     return { status: "on-time", lateMinutes: 0, weekdayKey };
   }
 
   const [expH, expM] = expectedTime.split(":").map(Number);
-  const expectedDate = new Date(checkInDate);
-  expectedDate.setHours(expH, expM, 0, 0);
+  const expectedTotalMinutes = expH * 60 + expM;
+  const graceCutoffMinutes = expectedTotalMinutes + graceMinutes;
 
-  const graceDate = new Date(expectedDate.getTime() + graceMinutes * 60000);
+  const checkInTotalMinutes =
+    pktTime.getUTCHours() * 60 +
+    pktTime.getUTCMinutes() +
+    pktTime.getUTCSeconds() / 60;
 
-  if (checkInDate <= graceDate) {
+  if (checkInTotalMinutes <= graceCutoffMinutes) {
     return { status: "on-time", lateMinutes: 0, weekdayKey };
   }
 
-  const lateMinutes = Math.round((checkInDate.getTime() - graceDate.getTime()) / 60000);
-  const status =
-    lateMinutes > extremeLateAfterGraceMinutes ? "extreme-late" : "late";
+  const lateMinutes = Math.max(
+    1,
+    Math.round(checkInTotalMinutes - graceCutoffMinutes)
+  );
+  const useExtremeLate =
+    Number(policy?.extremeLatesPerOff ?? 0) > 0 &&
+    lateMinutes > extremeLateAfterGraceMinutes;
+  const status = useExtremeLate ? "extreme-late" : "late";
 
   return { status, lateMinutes, weekdayKey };
+}
+
+async function recalculateAllAttendanceRecords() {
+  try {
+    const policy = await getCompanyPolicy();
+    const usersRes = await query("SELECT uid, schedule FROM users");
+    const schedulesByUid = {};
+    for (const u of usersRes.rows) {
+      const mapped = mapUserRow(u);
+      schedulesByUid[u.uid] = mapped.schedule;
+    }
+
+    const attRes = await query("SELECT * FROM attendance");
+    for (const attRow of attRes.rows) {
+      const sched = schedulesByUid[attRow.uid] || DEFAULT_SCHEDULE;
+      const checkInDate = new Date(attRow.check_in_time);
+      const { status, lateMinutes } = calculateAttendanceStatus(
+        sched,
+        checkInDate,
+        policy
+      );
+      if (
+        attRow.status !== status ||
+        Number(attRow.late_minutes) !== Number(lateMinutes)
+      ) {
+        await query(
+          "UPDATE attendance SET status = $1, late_minutes = $2 WHERE id = $3",
+          [status, lateMinutes, attRow.id]
+        );
+      }
+    }
+  } catch (err) {
+    console.warn("Could not recalculate attendance records:", err.message);
+  }
 }
 
 // Auth Middleware
@@ -436,6 +491,14 @@ app.put("/api/users/:uid", authMiddleware, async (req, res) => {
       !isLockedForEmployee && body.isActive !== undefined
         ? Boolean(body.isActive)
         : current.isActive;
+    const isAttendanceExempt =
+      !isLockedForEmployee && body.isAttendanceExempt !== undefined
+        ? Boolean(body.isAttendanceExempt)
+        : current.isAttendanceExempt;
+    const designation =
+      !isLockedForEmployee && body.designation !== undefined
+        ? String(body.designation || "").trim()
+        : current.designation || "";
 
     const updateRes = await query(
       `UPDATE users
@@ -458,8 +521,10 @@ app.put("/api/users/:uid", authMiddleware, async (req, res) => {
            emergency_phone = $17,
            schedule = $18::jsonb,
            photo_url = $19,
-           is_active = $20
-       WHERE uid = $21
+           is_active = $20,
+           is_attendance_exempt = $21,
+           designation = $22
+       WHERE uid = $23
        RETURNING *`,
       [
         name,
@@ -482,6 +547,8 @@ app.put("/api/users/:uid", authMiddleware, async (req, res) => {
         JSON.stringify(schedule || DEFAULT_SCHEDULE),
         photoUrl || "",
         isActive,
+        isAttendanceExempt,
+        designation,
         uid,
       ]
     );
@@ -509,6 +576,104 @@ app.put("/api/users/:uid", authMiddleware, async (req, res) => {
     res.json({ user: updatedUser });
   } catch (err) {
     console.error("Update user error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Create Payroll-Only Staff (e.g. Office Boy — No Attendance Required, Only Payroll)
+app.post("/api/users/payroll-staff", authMiddleware, async (req, res) => {
+  try {
+    const callerRes = await query("SELECT role FROM users WHERE uid = $1", [
+      req.user.uid,
+    ]);
+    if (callerRes.rows[0]?.role !== "admin") {
+      return res.status(403).json({ error: "Only Admin can add payroll staff." });
+    }
+
+    const {
+      fullName,
+      designation,
+      cnic,
+      phone,
+      salary,
+      method,
+      providerName,
+      accountTitle,
+      accountNumber,
+      iban,
+    } = req.body || {};
+
+    const cleanName = String(fullName || "").trim();
+    if (!cleanName) {
+      return res.status(400).json({ error: "Full Name is required." });
+    }
+
+    const uid = crypto.randomUUID();
+    const internalEmail = `support.${Date.now()}.${Math.floor(Math.random() * 1000)}@payroll.local`;
+    const passwordHash = await bcrypt.hash(crypto.randomUUID(), 8);
+    const emptySchedule = {
+      sun: "",
+      mon: "",
+      tue: "",
+      wed: "",
+      thu: "",
+      fri: "",
+      sat: "",
+    };
+
+    const insertRes = await query(
+      `INSERT INTO users (
+        uid, name, full_name, email, password_hash, role, designation,
+        is_attendance_exempt, salary, profile_complete, cnic, phone,
+        payment_method, provider_name, account_title, account_number, iban,
+        schedule, is_active
+      ) VALUES (
+        $1, $2, $3, $4, $5, 'employee', $6,
+        TRUE, $7, TRUE, $8, $9,
+        $10, $11, $12, $13, $14,
+        $15::jsonb, TRUE
+      ) RETURNING *`,
+      [
+        uid,
+        cleanName,
+        cleanName,
+        internalEmail,
+        passwordHash,
+        String(designation || "Office Boy").trim(),
+        Math.max(0, Number(salary) || 0),
+        String(cnic || "").trim(),
+        String(phone || "").trim(),
+        String(method || "bank").trim(),
+        String(providerName || "").trim(),
+        String(accountTitle || "").trim(),
+        String(accountNumber || "").trim(),
+        String(iban || "").trim(),
+        JSON.stringify(emptySchedule),
+      ]
+    );
+
+    res.status(201).json({ user: mapUserRow(insertRes.rows[0]) });
+  } catch (err) {
+    console.error("Create payroll staff error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete("/api/users/:uid", authMiddleware, async (req, res) => {
+  try {
+    const callerRes = await query("SELECT role FROM users WHERE uid = $1", [
+      req.user.uid,
+    ]);
+    if (callerRes.rows[0]?.role !== "admin") {
+      return res.status(403).json({ error: "Only Admin can delete staff records." });
+    }
+    const { uid } = req.params;
+    if (uid === req.user.uid) {
+      return res.status(400).json({ error: "You cannot delete your own account." });
+    }
+    await query("DELETE FROM users WHERE uid = $1", [uid]);
+    res.json({ deleted: true, uid });
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
@@ -585,6 +750,126 @@ app.post("/api/attendance/mark", authMiddleware, async (req, res) => {
     res.status(201).json({ record: mapAttendanceRow(insertRes.rows[0]) });
   } catch (err) {
     console.error("Mark attendance error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// One-Time Admin Edit / Set Attendance Time on Daily Check-in Sheet
+app.put("/api/attendance/edit-time", authMiddleware, async (req, res) => {
+  try {
+    const callerRes = await query(
+      "SELECT role, name, full_name FROM users WHERE uid = $1",
+      [req.user.uid]
+    );
+    const caller = callerRes.rows[0];
+    if (!caller || caller.role !== "admin") {
+      return res
+        .status(403)
+        .json({ error: "Sirf Admin attendance time edit kar sakta hai." });
+    }
+
+    const { uid, date, time } = req.body || {};
+    const cleanDate = String(date || "").trim();
+    const cleanTime = String(time || "").trim();
+
+    if (
+      !uid ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(cleanDate) ||
+      !/^\d{1,2}:\d{2}$/.test(cleanTime)
+    ) {
+      return res
+        .status(400)
+        .json({ error: "Valid employee uid, date (YYYY-MM-DD), and time (HH:MM) are required." });
+    }
+
+    const userRes = await query("SELECT * FROM users WHERE uid = $1", [uid]);
+    if (userRes.rows.length === 0) {
+      return res.status(404).json({ error: "Employee not found." });
+    }
+    const emp = mapUserRow(userRes.rows[0]);
+
+    const id = `${uid}_${cleanDate}`;
+    const existingRes = await query(
+      "SELECT * FROM attendance WHERE id = $1 OR (uid = $2 AND date = $3)",
+      [id, uid, cleanDate]
+    );
+
+    if (existingRes.rows.length > 0 && existingRes.rows[0].is_edited) {
+      return res.status(400).json({
+        error:
+          "Is employee ki attendance is tarikh par pehle hi 1 dafa edit ho chuki hai. Attendance sirf aik dafa edit ho sakti hai.",
+      });
+    }
+
+    const [hh, mm] = cleanTime.split(":").map(Number);
+    const paddedTime = `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+    // Construct check-in timestamp in Pakistan Standard Time (+05:00)
+    const checkInDate = new Date(`${cleanDate}T${paddedTime}:00+05:00`);
+    if (Number.isNaN(checkInDate.getTime())) {
+      return res.status(400).json({ error: "Invalid time format." });
+    }
+
+    const policy = await getCompanyPolicy();
+    const { status, lateMinutes } = calculateAttendanceStatus(
+      emp.schedule,
+      checkInDate,
+      policy
+    );
+
+    const adminName =
+      caller.full_name || caller.name || "Admin";
+    const editedByLabel = `Edited by ${adminName}`;
+    const empName =
+      emp.fullName || emp.name || emp.email.split("@")[0] || "Employee";
+    const monthStr = cleanDate.slice(0, 7);
+
+    let resultRow;
+    if (existingRes.rows.length > 0) {
+      const upd = await query(
+        `UPDATE attendance
+         SET check_in_time = $1,
+             status = $2,
+             late_minutes = $3,
+             is_edited = TRUE,
+             edited_by = $4,
+             edited_at = NOW()
+         WHERE id = $5
+         RETURNING *`,
+        [
+          checkInDate.toISOString(),
+          status,
+          lateMinutes,
+          editedByLabel,
+          existingRes.rows[0].id,
+        ]
+      );
+      resultRow = upd.rows[0];
+    } else {
+      const ins = await query(
+        `INSERT INTO attendance (
+           id, uid, name, date, month, check_in_time, status, late_minutes,
+           marked_by, is_edited, edited_by, edited_at
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, TRUE, $10, NOW())
+         RETURNING *`,
+        [
+          id,
+          uid,
+          empName,
+          cleanDate,
+          monthStr,
+          checkInDate.toISOString(),
+          status,
+          lateMinutes,
+          req.user.uid,
+          editedByLabel,
+        ]
+      );
+      resultRow = ins.rows[0];
+    }
+
+    res.json({ record: mapAttendanceRow(resultRow) });
+  } catch (err) {
+    console.error("Edit attendance time error:", err);
     res.status(500).json({ error: err.message });
   }
 });
