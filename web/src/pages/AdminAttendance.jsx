@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { fetchUsers, fetchAttendance, fetchLeaves, fetchHolidays } from "../api";
-import { getLocalMonthStr } from "../utils/attendanceHelpers";
+import { fetchUsers, fetchAttendance, fetchLeaves, fetchHolidays, fetchPolicies } from "../api";
+import { getLocalMonthStr, getActivePolicies } from "../utils/attendanceHelpers";
 import { buildMonthRows } from "../utils/monthattendance";
 import {
   exportMonthToCSV,
@@ -78,6 +78,7 @@ function AdminAttendance() {
           fetchAttendance({ uid: selectedUid, month }),
           fetchLeaves({ uid: selectedUid, status: "approved" }),
           fetchHolidays().catch(() => []),
+          fetchPolicies().catch(() => null),
         ]);
         if (cancelled) return;
         setRecords(attList);
@@ -110,15 +111,20 @@ function AdminAttendance() {
         })
       : { rows: [], summary: null };
 
+  const activePolicies = getActivePolicies();
+  const latesPerOff = Number(activePolicies.latesPerOff || 3);
+  const offFromLates =
+    summary && latesPerOff > 0 ? Math.floor((summary.late || 0) / latesPerOff) : 0;
+
   const stats = summary
     ? [
         ["Present", summary.present],
         ["On time", summary.onTime],
         ["Late", summary.late],
-        ["Extreme late", summary.extremeLate],
-        ["Absent", summary.absent],
+        [`Offs (${latesPerOff} Lates=1)`, offFromLates],
+        ["Absent (Off)", summary.absent],
+        ["Total Offs", offFromLates + (summary.absent || 0)],
         ["Leave", summary.leave],
-        ["Early leave", summary.early],
       ]
     : [];
 

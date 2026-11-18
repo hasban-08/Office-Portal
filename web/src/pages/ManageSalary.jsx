@@ -670,12 +670,48 @@ function ManageSalary() {
 
                     <div className="salary-breakdown-row">
                       <span>
-                        Late & Extreme Late ({selectedStats.lateCount ?? 0} late = {selectedStats.offFromLates ?? 0} off, {selectedStats.extremeLateCount ?? 0} extreme late = {selectedStats.offFromExtremeLates ?? 0} off)
+                        Lates se Banne Wali Offs ({selectedStats.lateCount ?? 0} Lates ÷ {selectedStats.latesPerOff ?? 3} Lates per Off ={" "}
+                        <strong>{selectedStats.offFromLates ?? 0} Off(s)</strong>)
                       </span>
                       <span style={{ color: "#f87171" }}>
                         - Rs. {Math.round(selectedStats.lateDeductionGross ?? 0).toLocaleString()}
                       </span>
                     </div>
+
+                    {Array.isArray(selectedStats.lateRecords) &&
+                      selectedStats.lateRecords.length > 0 && (
+                        <div
+                          style={{
+                            padding: "8px 12px",
+                            borderRadius: "8px",
+                            background: "rgba(250, 204, 21, 0.08)",
+                            border: "1px solid rgba(250, 204, 21, 0.25)",
+                            fontSize: "12px",
+                            marginBottom: "6px",
+                          }}
+                        >
+                          <div style={{ fontWeight: 600, color: "#fde047", marginBottom: "6px" }}>
+                            Late Arrival Dates ({selectedStats.lateRecords.length} Lates ={" "}
+                            {selectedStats.offFromLates ?? 0} Off):
+                          </div>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                            {selectedStats.lateRecords.map((lr) => (
+                              <span
+                                key={lr.date}
+                                style={{
+                                  background: "rgba(0,0,0,0.35)",
+                                  border: "1px solid rgba(250, 204, 21, 0.3)",
+                                  color: "#fef08a",
+                                  padding: "3px 8px",
+                                  borderRadius: "6px",
+                                }}
+                              >
+                                {lr.date}: {lr.time} ({lr.lateMinutes}m late)
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
 
                     <div className="salary-breakdown-row">
                       <span>

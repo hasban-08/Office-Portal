@@ -1,6 +1,14 @@
+const LIVE_API_FALLBACK = "https://office-portal-api.vercel.app/api";
+const isLocalHost =
+  typeof window !== "undefined" &&
+  (window.location.hostname === "localhost" ||
+    window.location.hostname === "127.0.0.1");
+
 const API_BASE =
   process.env.REACT_APP_API_URL ||
-  `http://${window.location.hostname || "localhost"}:5000/api`;
+  (isLocalHost
+    ? `http://${window.location.hostname || "localhost"}:5000/api`
+    : LIVE_API_FALLBACK);
 
 const TOKEN_KEY = "office_portal_token";
 const USER_KEY = "office_portal_user";
@@ -146,10 +154,23 @@ export async function apiRequest(path, options = {}) {
     headers.Authorization = `Bearer ${token}`;
   }
 
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...options,
-    headers,
-  });
+  let res;
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      ...options,
+      headers,
+    });
+  } catch (err) {
+    // If local backend (port 5000) is not running, automatically fallback to live Vercel API
+    if (API_BASE !== LIVE_API_FALLBACK) {
+      res = await fetch(`${LIVE_API_FALLBACK}${path}`, {
+        ...options,
+        headers,
+      });
+    } else {
+      throw err;
+    }
+  }
 
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {

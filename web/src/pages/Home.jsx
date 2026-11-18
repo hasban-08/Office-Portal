@@ -535,670 +535,969 @@ function Home() {
 
       {/* ── MAIN CONTENT ── */}
       <main className="home-main">
-        <header className="home-header">
-          <div>
-            <h1>
-              {getGreeting()}, {userData.name?.split(" ")[0] || "User"}!
-            </h1>
-            <p>{dateLabel}</p>
-          </div>
+        <div className="home-container">
+          <header className="home-header">
+            <div>
+              <h1>
+                {getGreeting()}, {userData.name?.split(" ")[0] || "User"}!
+              </h1>
+              <p>{dateLabel}</p>
+            </div>
+            {isAdmin ? (
+              <div className="home-header-stat">
+                <span className="stat-label">Estimated Payroll ({currentMonth})</span>
+                <span className="stat-value">
+                  Rs. {Math.round(totalPayroll).toLocaleString()}
+                </span>
+              </div>
+            ) : (
+              myMonthStats && (
+                <div className="home-header-stat">
+                  <span className="stat-label">My Net Salary ({currentMonth})</span>
+                  <span className="stat-value">
+                    Rs. {Math.round(myMonthStats.netSalary ?? 0).toLocaleString()}
+                  </span>
+                </div>
+              )
+            )}
+          </header>
+
+          {/* ── TOP KPI STRIP (Admin vs Employee) ── */}
           {isAdmin ? (
-            <div className="home-header-stat">
-              <span className="stat-label">Estimated Payroll ({currentMonth})</span>
-              <span className="stat-value">
-                Rs. {Math.round(totalPayroll).toLocaleString()}
-              </span>
+            <div className="home-kpi-grid">
+              <div className="home-kpi-card">
+                <span className="home-kpi-label">Total Staff & Payroll</span>
+                <span className="home-kpi-value">
+                  Rs. {Math.round(totalPayroll).toLocaleString()}
+                </span>
+                <span className="home-kpi-sub">
+                  Across {employees.length} active staff members
+                </span>
+              </div>
+              <div className="home-kpi-card">
+                <span className="home-kpi-label">Today's Check-ins</span>
+                <span className="home-kpi-value">
+                  {todayAtt.length} / {totalEmps}
+                </span>
+                <span className="home-kpi-sub">
+                  {onTimeCount} On Time · {lateCount} Late
+                </span>
+              </div>
+              <div className="home-kpi-card">
+                <span className="home-kpi-label">Pending Leave Requests</span>
+                <span className="home-kpi-value">{pendingLeavesCount}</span>
+                <span className="home-kpi-sub">
+                  {leaveCount} employee(s) on leave today
+                </span>
+              </div>
+              <div className="home-kpi-card">
+                <span className="home-kpi-label">Absent / Not Marked Yet</span>
+                <span className="home-kpi-value">{absentOrPending}</span>
+                <span className="home-kpi-sub">
+                  For {todayStr}
+                </span>
+              </div>
             </div>
           ) : (
             myMonthStats && (
-              <div className="home-header-stat">
-                <span className="stat-label">My Net Salary ({currentMonth})</span>
-                <span className="stat-value">
-                  Rs. {Math.round(myMonthStats.netSalary ?? 0).toLocaleString()}
-                </span>
+              <div className="home-kpi-grid">
+                <div className="home-kpi-card">
+                  <span className="home-kpi-label">Net Payable Salary</span>
+                  <span className="home-kpi-value">
+                    Rs. {Math.round(myMonthStats.netSalary ?? 0).toLocaleString()}
+                  </span>
+                  <span className="home-kpi-sub">
+                    Base: Rs. {Math.round(Number(userData.salary) || 0).toLocaleString()}
+                  </span>
+                </div>
+                <div className="home-kpi-card">
+                  <span className="home-kpi-label">Late Arrivals ({currentMonth})</span>
+                  <span className="home-kpi-value" style={{ color: (myMonthStats.lateCount ?? 0) > 0 ? "#fde047" : "#fff" }}>
+                    {myMonthStats.lateCount ?? 0} Lates
+                  </span>
+                  <span className="home-kpi-sub">
+                    = {myMonthStats.offFromLates ?? 0} Off(s) ({myMonthStats.latesPerOff} Lates = 1 Off)
+                  </span>
+                </div>
+                <div className="home-kpi-card">
+                  <span className="home-kpi-label">Total Offs & Free Relief</span>
+                  <span className="home-kpi-value">
+                    {myMonthStats.offEquivalents ?? 0} Off(s)
+                  </span>
+                  <span className="home-kpi-sub">
+                    {myMonthStats.freeOffsAllowed ?? 2} Free Offs Allowed per month
+                  </span>
+                </div>
+                <div className="home-kpi-card">
+                  <span className="home-kpi-label">Salary Deduction (Katoti)</span>
+                  <span
+                    className="home-kpi-value"
+                    style={{
+                      color: (myMonthStats.deduction ?? 0) > 0 ? "#f87171" : "#4ade80",
+                    }}
+                  >
+                    {(myMonthStats.deduction ?? 0) > 0
+                      ? `- Rs. ${Math.round(myMonthStats.deduction).toLocaleString()}`
+                      : "Rs. 0"}
+                  </span>
+                  <span className="home-kpi-sub">
+                    {myMonthStats.deductibleOffs ?? 0} Deductible Off(s)
+                  </span>
+                </div>
               </div>
             )
           )}
-        </header>
 
-        {/* Quick Actions (Admin Only) */}
-        {isAdmin && (
-          <div className="home-quick-actions">
-            <button
-              onClick={() => navigate("/manage-leaves")}
-              className="quick-btn"
-            >
-              Leaves
-              {pendingLeavesCount > 0 && (
-                <span className="quick-badge">{pendingLeavesCount}</span>
-              )}
-            </button>
-            <button
-              onClick={() => navigate("/daily-attendance")}
-              className="quick-btn"
-            >
-              Mark Today
-            </button>
-            <button
-              onClick={() => navigate("/manage-salary")}
-              className="quick-btn"
-            >
-              Payroll & Slips
-            </button>
-            <button
-              onClick={() => navigate("/employee-status")}
-              className="quick-btn"
-            >
-              Employee Status
-            </button>
-            <button
-              onClick={() => navigate("/company-policies")}
-              className="quick-btn"
-            >
-              Company Policies
-            </button>
-            <button
-              onClick={() => setShowSmtpModal(true)}
-              className="quick-btn"
-              style={{
-                borderColor: smtpConfigured
-                  ? "rgba(74, 222, 128, 0.4)"
-                  : "rgba(251, 191, 36, 0.45)",
-              }}
-            >
-              {smtpConfigured ? "Email Connected" : "Setup Email Alerts"}
-            </button>
-          </div>
-        )}
-
-        {/* Dashboard Widgets Grid */}
-        <div className="home-widgets-grid">
-          {isAdmin ? (
-            <div className="home-widget chart-widget">
-              <h3>Today's Overview</h3>
-              <div className="chart-container">
-                <div
-                  className="donut-chart"
-                  style={{
-                    background: `conic-gradient(
-                      #a78bfa 0% ${pOnTime}%, 
-                      #6d3aff ${pOnTime}% ${pOnTime + pLate}%, 
-                      rgba(255,255,255,0.3) ${pOnTime + pLate}% ${pOnTime + pLate + pLeave}%, 
-                      rgba(255,255,255,0.05) ${pOnTime + pLate + pLeave}% 100%
-                    )`,
-                  }}
-                >
-                  <div className="donut-inner">
-                    <span>{todayAtt.length}</span>
-                    <small>Marked</small>
-                  </div>
-                </div>
-                <div className="chart-legend">
-                  <div className="legend-item">
-                    <span className="dot dot-ontime"></span> On Time ({onTimeCount})
-                  </div>
-                  <div className="legend-item">
-                    <span className="dot dot-late"></span> Late ({lateCount})
-                  </div>
-                  <div className="legend-item">
-                    <span className="dot dot-leave"></span> On Leave ({leaveCount})
-                  </div>
-                  <div className="legend-item">
-                    <span className="dot dot-absent"></span> Pending/Absent (
-                    {absentOrPending})
-                  </div>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="home-widget">
-              <h3>Your Today's Status</h3>
-              {myTodayRecord ? (
-                <div className="home-my-status">
-                  <div className="status-circle status-success">
-                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
-                      <path
-                        d="M20 6L9 17l-5-5"
-                        stroke="currentColor"
-                        strokeWidth="2.5"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                  </div>
-                  <h4>You're checked in</h4>
-                  <p>Marked at {formatTime12(myTodayRecord.checkInTime)}</p>
-                </div>
-              ) : (
-                <div className="home-my-status">
-                  <div className="status-circle status-pending">
-                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
-                      <circle
-                        cx="12"
-                        cy="12"
-                        r="9"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                      />
-                      <path
-                        d="M12 7v5l3 3"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                      />
-                    </svg>
-                  </div>
-                  <h4>Not marked yet</h4>
-                  <p>Your admin will mark you when you arrive.</p>
-                  {lateWarning && (
-                    <p className="late-alert-text">
-                      Extreme late window active ({lateWarning.lateMinutes}m past
-                      grace).
-                    </p>
-                  )}
-                </div>
-              )}
+          {/* Quick Actions (Admin Only) */}
+          {isAdmin && (
+            <div className="home-quick-actions">
+              <button
+                onClick={() => navigate("/daily-attendance")}
+                className="quick-btn"
+              >
+                Mark Today's Attendance
+              </button>
+              <button
+                onClick={() => navigate("/manage-leaves")}
+                className="quick-btn"
+              >
+                Leave Approvals
+                {pendingLeavesCount > 0 && (
+                  <span className="quick-badge">{pendingLeavesCount}</span>
+                )}
+              </button>
+              <button
+                onClick={() => navigate("/manage-salary")}
+                className="quick-btn"
+              >
+                Salaries & Payroll
+              </button>
+              <button
+                onClick={() => navigate("/employee-status")}
+                className="quick-btn"
+              >
+                Employee Status
+              </button>
+              <button
+                onClick={() => navigate("/company-policies")}
+                className="quick-btn"
+              >
+                Company Policies
+              </button>
+              <button
+                onClick={() => setShowSmtpModal(true)}
+                className="quick-btn"
+                style={{
+                  borderColor: smtpConfigured
+                    ? "rgba(74, 222, 128, 0.4)"
+                    : "rgba(251, 191, 36, 0.45)",
+                }}
+              >
+                {smtpConfigured ? "Email Connected" : "Setup Email Alerts"}
+              </button>
             </div>
           )}
 
-          <div className="home-widget notice-widget">
-            <div className="widget-header">
-              <h3>Notice Board</h3>
-              {isAdmin && (
-                <div style={{ display: "flex", gap: "6px" }}>
-                  <button
-                    className="add-notice-btn"
-                    style={{
-                      background: "rgba(255,255,255,0.06)",
-                      borderColor: "rgba(255,255,255,0.15)",
-                    }}
-                    onClick={() => setShowSmtpModal(true)}
-                    title="Configure Gmail SMTP for Email Notifications"
-                  >
-                    Email Settings
-                  </button>
-                  <button className="add-notice-btn" onClick={handleAddNotice}>
-                    + Add
-                  </button>
+          {/* Dashboard Widgets Grid */}
+          <div className={isAdmin ? "home-widgets-grid-admin" : "home-widgets-grid"}>
+            {isAdmin ? (
+              <div className="home-widget chart-widget">
+                <div className="widget-header">
+                  <h3>Today's Attendance Overview</h3>
+                  <span style={{ fontSize: "12px", color: "rgba(240,238,255,0.45)" }}>
+                    {todayStr}
+                  </span>
                 </div>
-              )}
-            </div>
-            <div className="notice-list">
-              {announcements.length === 0 ? (
-                <p className="empty-text">No announcements yet.</p>
-              ) : (
-                announcements.map((ann, i) => (
+                <div className="chart-container">
                   <div
-                    className="notice-card"
-                    key={ann.id || i}
+                    className="donut-chart"
                     style={{
-                      display: "flex",
-                      alignItems: "flex-start",
-                      justifyContent: "space-between",
-                      gap: "10px",
+                      background: `conic-gradient(
+                        #a78bfa 0% ${pOnTime}%, 
+                        #6d3aff ${pOnTime}% ${pOnTime + pLate}%, 
+                        rgba(255,255,255,0.3) ${pOnTime + pLate}% ${pOnTime + pLate + pLeave}%, 
+                        rgba(255,255,255,0.05) ${pOnTime + pLate + pLeave}% 100%
+                      )`,
                     }}
                   >
-                    <div style={{ display: "flex", gap: "10px", flex: 1 }}>
-                      <div className="notice-content">
-                        <p>{ann.message}</p>
-                        <small>
-                          By {ann.author} ·{" "}
-                          {ann.createdAt
-                            ? new Date(ann.createdAt).toLocaleDateString()
-                            : "Just now"}
-                        </small>
-                      </div>
+                    <div className="donut-inner">
+                      <span>{todayAtt.length}</span>
+                      <small>Marked</small>
                     </div>
-
-                    {isAdmin && (
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteNotice(ann.id)}
-                        title="Delete announcement"
-                        style={{
-                          background: "rgba(239, 68, 68, 0.16)",
-                          border: "1px solid rgba(239, 68, 68, 0.4)",
-                          color: "#f87171",
-                          borderRadius: "7px",
-                          padding: "4px 10px",
-                          fontSize: "11.5px",
-                          fontWeight: 600,
-                          cursor: "pointer",
-                          flexShrink: 0,
-                        }}
-                      >
-                        Delete
-                      </button>
+                  </div>
+                  <div className="chart-legend">
+                    <div className="legend-item">
+                      <span className="dot dot-ontime"></span> On Time ({onTimeCount})
+                    </div>
+                    <div className="legend-item">
+                      <span className="dot dot-late"></span> Late ({lateCount})
+                    </div>
+                    <div className="legend-item">
+                      <span className="dot dot-leave"></span> On Leave ({leaveCount})
+                    </div>
+                    <div className="legend-item">
+                      <span className="dot dot-absent"></span> Pending / Absent ({absentOrPending})
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="home-widget">
+                <div className="widget-header">
+                  <h3>Today's Check-in Status</h3>
+                  <span style={{ fontSize: "12px", color: "rgba(240,238,255,0.45)" }}>
+                    {todayStr}
+                  </span>
+                </div>
+                {myTodayRecord ? (
+                  <div className="home-my-status">
+                    <div className="status-circle status-success">
+                      <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
+                        <path
+                          d="M20 6L9 17l-5-5"
+                          stroke="currentColor"
+                          strokeWidth="2.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    </div>
+                    <h4>Checked In</h4>
+                    <p>Marked at {formatTime12(myTodayRecord.checkInTime)}</p>
+                  </div>
+                ) : (
+                  <div className="home-my-status">
+                    <div className="status-circle status-pending">
+                      <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
+                        <circle
+                          cx="12"
+                          cy="12"
+                          r="9"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                        />
+                        <path
+                          d="M12 7v5l3 3"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                        />
+                      </svg>
+                    </div>
+                    <h4>Not Marked Yet</h4>
+                    <p>Your admin will mark you when you arrive.</p>
+                    {lateWarning && (
+                      <p className="late-alert-text">
+                        Late window active ({lateWarning.lateMinutes}m past grace).
+                      </p>
                     )}
                   </div>
-                ))
-              )}
-            </div>
-          </div>
+                )}
+              </div>
+            )}
 
-          {!isAdmin && (
-            <div className="home-widget upcoming-widget">
+            <div className="home-widget notice-widget">
               <div className="widget-header">
-                <h3>Punctuality & Leaves</h3>
+                <h3>Notice Board</h3>
+                {isAdmin && (
+                  <div style={{ display: "flex", gap: "6px" }}>
+                    <button
+                      className="add-notice-btn"
+                      style={{
+                        background: "rgba(255,255,255,0.05)",
+                        borderColor: "rgba(255,255,255,0.14)",
+                      }}
+                      onClick={() => setShowSmtpModal(true)}
+                      title="Configure Gmail SMTP for Email Notifications"
+                    >
+                      Email Settings
+                    </button>
+                    <button className="add-notice-btn" onClick={handleAddNotice}>
+                      + Post Notice
+                    </button>
+                  </div>
+                )}
               </div>
-              <div className="punctuality-card">
-                <div className="punctuality-info">
-                  <span className="punctuality-label">Month's Score</span>
-                  <span className="punctuality-value">{punctualityRate}%</span>
-                </div>
-                <div className="punctuality-bar">
-                  <div
-                    className="punctuality-fill"
-                    style={{ width: `${punctualityRate}%` }}
-                  ></div>
-                </div>
-              </div>
-              <h4 className="upcoming-title">Upcoming Approved Leaves</h4>
-              <div className="upcoming-list">
-                {upcomingLeaves.length === 0 ? (
-                  <p className="empty-text">No upcoming leaves.</p>
+              <div className="notice-list">
+                {announcements.length === 0 ? (
+                  <p className="empty-text">No announcements posted yet.</p>
                 ) : (
-                  upcomingLeaves.map((l, i) => (
-                    <div className="upcoming-card" key={i}>
-                      <span className="upcoming-type">
-                        {l.type === "earlyLeave" ? "Early Leave" : "Leave"}
-                      </span>
-                      <span className="upcoming-date">
-                        {l.type === "earlyLeave"
-                          ? l.date
-                          : `${l.startDate} to ${l.endDate}`}
-                      </span>
+                  announcements.map((ann, i) => (
+                    <div
+                      className="notice-card"
+                      key={ann.id || i}
+                      style={{
+                        display: "flex",
+                        alignItems: "flex-start",
+                        justifyContent: "space-between",
+                        gap: "10px",
+                      }}
+                    >
+                      <div style={{ display: "flex", gap: "10px", flex: 1 }}>
+                        <div className="notice-content">
+                          <p>{ann.message}</p>
+                          <small>
+                            By {ann.author} ·{" "}
+                            {ann.createdAt
+                              ? new Date(ann.createdAt).toLocaleDateString()
+                              : "Just now"}
+                          </small>
+                        </div>
+                      </div>
+
+                      {isAdmin && (
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteNotice(ann.id)}
+                          title="Delete announcement"
+                          style={{
+                            background: "rgba(239, 68, 68, 0.14)",
+                            border: "1px solid rgba(239, 68, 68, 0.35)",
+                            color: "#f87171",
+                            borderRadius: "7px",
+                            padding: "4px 10px",
+                            fontSize: "11.5px",
+                            fontWeight: 600,
+                            cursor: "pointer",
+                            flexShrink: 0,
+                          }}
+                        >
+                          Delete
+                        </button>
+                      )}
                     </div>
                   ))
                 )}
               </div>
             </div>
-          )}
-        </div>
 
-        {/* ── EMPLOYEE MONTHLY SALARY, LATES, OFFS & DEDUCTION DASHBOARD SECTION ── */}
-        {!isAdmin && myMonthStats && (
-          <section className="home-section" style={{ marginBottom: "40px" }}>
-            <div className="home-dir-header" style={{ marginBottom: "16px" }}>
-              <h2 className="home-section-title" style={{ margin: 0 }}>
-                My Monthly Attendance & Salary Summary — {currentMonth}
-              </h2>
-              <button
-                onClick={() =>
-                  exportEmployeeSalarySlipPDF({
-                    employee: userData,
-                    stats: myMonthStats,
-                    month: currentMonth,
-                  })
-                }
-                style={{
-                  background: "linear-gradient(135deg, #6d3aff, #a78bfa)",
-                  color: "#fff",
-                  border: "none",
-                  borderRadius: "10px",
-                  padding: "9px 16px",
-                  fontSize: "13px",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                }}
-              >
-                Download My Salary Slip PDF
-              </button>
-            </div>
-
-            <div className="home-emp-grid">
-              <div className="home-emp-card">
-                <div className="home-emp-header">
-                  <span className="home-emp-avatar">PKR</span>
-                  <span className="home-emp-name">Salary Calculation</span>
+            {!isAdmin && (
+              <div className="home-widget upcoming-widget">
+                <div className="widget-header">
+                  <h3>Punctuality & Leaves</h3>
                 </div>
-                <div className="home-emp-net">
-                  <span className="home-emp-net-label">Net Salary ({currentMonth})</span>
-                  <span className="home-emp-net-value">
-                    Rs. {Math.round(myMonthStats.netSalary ?? 0).toLocaleString()}
-                  </span>
-                </div>
-                <div className="home-emp-stats">
-                  <div className="home-emp-stat">
-                    <span className="home-emp-stat-label">Base Salary</span>
-                    <span className="home-emp-stat-value">
-                      Rs. {Math.round(Number(userData.salary) || 0).toLocaleString()}
-                    </span>
+                <div className="punctuality-card">
+                  <div className="punctuality-info">
+                    <span className="punctuality-label">On-Time Punctuality</span>
+                    <span className="punctuality-value">{punctualityRate}%</span>
                   </div>
-                  <div className="home-emp-stat">
-                    <span className="home-emp-stat-label">Total Salary Cut</span>
-                    <span className="home-emp-stat-value" style={{ color: "#f87171" }}>
-                      - Rs. {Math.round(myMonthStats.deduction ?? 0).toLocaleString()}
-                    </span>
-                  </div>
-                  <div className="home-emp-stat">
-                    <span className="home-emp-stat-label">Per-Day Rate</span>
-                    <span className="home-emp-stat-value">
-                      Rs. {Math.round(myMonthStats.perDayRate ?? 0).toLocaleString()}
-                    </span>
-                  </div>
-                  <div className="home-emp-stat">
-                    <span className="home-emp-stat-label">Working Days</span>
-                    <span className="home-emp-stat-value">
-                      {myMonthStats.workingDaysInMonth ?? 0} days
-                    </span>
+                  <div className="punctuality-bar">
+                    <div
+                      className="punctuality-fill"
+                      style={{ width: `${punctualityRate}%` }}
+                    ></div>
                   </div>
                 </div>
-              </div>
-
-              <div className="home-emp-card">
-                <div className="home-emp-header">
-                  <span className="home-emp-avatar">ATT</span>
-                  <span className="home-emp-name">Lates & Offs Record</span>
-                </div>
-                <div className="home-emp-net">
-                  <span className="home-emp-net-label">
-                    Total Off-Equivalents ({myMonthStats.freeOffsAllowed ?? 2} Free Offs Allowed)
-                  </span>
-                  <span className="home-emp-net-value">
-                    {myMonthStats.offEquivalents ?? 0} Offs ({myMonthStats.deductibleOffs ?? 0} Deductible)
-                  </span>
-                </div>
-                <div className="home-emp-stats">
-                  <div className="home-emp-stat">
-                    <span className="home-emp-stat-label">Present / On-Time</span>
-                    <span className="home-emp-stat-value">
-                      {myMonthStats.presentCount ?? 0} / {myMonthStats.onTimeCount ?? 0}
-                    </span>
-                  </div>
-                  <div className="home-emp-stat">
-                    <span className="home-emp-stat-label">
-                      Lates ({Number(myMonthStats.latesPerOff) > 0 ? `${myMonthStats.latesPerOff} = 1 Off` : "No Off"})
-                    </span>
-                    <span className="home-emp-stat-value">
-                      {myMonthStats.lateCount ?? 0} ({myMonthStats.offFromLates ?? 0} Off)
-                    </span>
-                  </div>
-                  <div className="home-emp-stat">
-                    <span className="home-emp-stat-label">
-                      Extreme Lates ({Number(myMonthStats.extremeLatesPerOff) > 0 ? `${myMonthStats.extremeLatesPerOff} = 1 Off` : "No Off"})
-                    </span>
-                    <span className="home-emp-stat-value">
-                      {myMonthStats.extremeLateCount ?? 0} ({myMonthStats.offFromExtremeLates ?? 0} Off)
-                    </span>
-                  </div>
-                  <div className="home-emp-stat">
-                    <span className="home-emp-stat-label">
-                      Absents / Early ({Number(myMonthStats.earlyLeavesPerOff) > 0 ? `${myMonthStats.earlyLeavesPerOff}=1` : "No Off"})
-                    </span>
-                    <span className="home-emp-stat-value">
-                      {myMonthStats.absentCount ?? 0} / {myMonthStats.earlyLeaveCount ?? 0}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </section>
-        )}
-
-        {/* ── ADMIN EMPLOYEE SALARIES SECTION ── */}
-        {isAdmin && (
-          <section className="home-section" style={{ marginBottom: "40px" }}>
-            <h2 className="home-section-title">
-              Employee Salaries — {currentMonth}
-            </h2>
-            {empLoading ? (
-              <p style={{ fontSize: "13px", color: "rgba(240,238,255,0.5)" }}>
-                Loading...
-              </p>
-            ) : employees.length === 0 ? (
-              <p style={{ fontSize: "13px", color: "rgba(240,238,255,0.5)" }}>
-                No employees found yet.
-              </p>
-            ) : (
-              <div className="home-emp-grid">
-                {employees.map((emp) => {
-                  const s = empStats[emp.uid] || {};
-                  const empInitial = displayNameFor(emp)
-                    .charAt(0)
-                    .toUpperCase();
-                  return (
-                    <div className="home-emp-card" key={emp.uid}>
-                      <div className="home-emp-header" style={{ justifyContent: "space-between" }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                          {emp.photoURL ? (
-                            <img
-                              src={emp.photoURL}
-                              alt={displayNameFor(emp)}
-                              style={{
-                                width: "32px",
-                                height: "32px",
-                                borderRadius: "50%",
-                                objectFit: "cover",
-                              }}
-                            />
-                          ) : (
-                            <span className="home-emp-avatar">{empInitial}</span>
-                          )}
-                          <span className="home-emp-name">
-                            {displayNameFor(emp)}
-                            {emp.isAttendanceExempt ? ` (${emp.designation || "Office Boy"})` : ""}
-                          </span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            exportEmployeeSalarySlipPDF({
-                              employee: emp,
-                              stats: s,
-                              month: currentMonth,
-                            })
-                          }
-                          style={{
-                            background: "rgba(167,139,250,0.16)",
-                            border: "1px solid rgba(167,139,250,0.35)",
-                            color: "#e9d5ff",
-                            borderRadius: "6px",
-                            padding: "4px 8px",
-                            fontSize: "11px",
-                            cursor: "pointer",
-                          }}
-                          title="Download PDF Salary Slip"
-                        >
-                          PDF Slip
-                        </button>
-                      </div>
-                      <div className="home-emp-net">
-                        <span className="home-emp-net-label">Net Salary</span>
-                        <span className="home-emp-net-value">
-                          Rs. {Math.round(s.netSalary ?? 0).toLocaleString()}
+                <h4 className="upcoming-title">Upcoming Approved Leaves</h4>
+                <div className="upcoming-list">
+                  {upcomingLeaves.length === 0 ? (
+                    <p className="empty-text">No upcoming leaves.</p>
+                  ) : (
+                    upcomingLeaves.map((l, i) => (
+                      <div className="upcoming-card" key={i}>
+                        <span className="upcoming-type">
+                          {l.type === "earlyLeave" ? "Early Leave" : "Full Leave"}
+                        </span>
+                        <span className="upcoming-date">
+                          {l.type === "earlyLeave"
+                            ? l.date
+                            : `${l.startDate} to ${l.endDate}`}
                         </span>
                       </div>
-                      {emp.isAttendanceExempt ? (
-                        <div className="home-emp-stats">
-                          <div className="home-emp-stat">
-                            <span className="home-emp-stat-label">CNIC</span>
-                            <span className="home-emp-stat-value">
-                              {emp.personalInfo?.cnic || "—"}
-                            </span>
-                          </div>
-                          <div className="home-emp-stat">
-                            <span className="home-emp-stat-label">Bank/Wallet</span>
-                            <span className="home-emp-stat-value">
-                              {emp.bankDetails?.providerName || emp.bankDetails?.method || "—"}
-                            </span>
-                          </div>
-                          <div className="home-emp-stat">
-                            <span className="home-emp-stat-label">Acc No.</span>
-                            <span className="home-emp-stat-value">
-                              {emp.bankDetails?.accountNumber || "—"}
-                            </span>
-                          </div>
-                          <div className="home-emp-stat">
-                            <span className="home-emp-stat-label">Attendance</span>
-                            <span className="home-emp-stat-value" style={{ color: "#4ade80" }}>
-                              Exempt
-                            </span>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="home-emp-stats">
-                          <div className="home-emp-stat">
-                            <span className="home-emp-stat-label">Base</span>
-                            <span className="home-emp-stat-value">
-                              Rs. {Number(emp.salary) || 0}
-                            </span>
-                          </div>
-                          <div className="home-emp-stat">
-                            <span className="home-emp-stat-label">Deducted</span>
-                            <span className="home-emp-stat-value">
-                              Rs. {(s.deduction ?? 0).toFixed(0)}
-                            </span>
-                          </div>
-                          <div className="home-emp-stat">
-                            <span className="home-emp-stat-label">
-                              Late/Absent
-                            </span>
-                            <span className="home-emp-stat-value">
-                              {s.lateCount ?? 0} / {s.absentCount ?? 0}
-                            </span>
-                          </div>
-                          <div className="home-emp-stat">
-                            <span className="home-emp-stat-label">Offs</span>
-                            <span className="home-emp-stat-value">
-                              {s.offEquivalents ?? 0}
-                            </span>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+                    ))
+                  )}
+                </div>
               </div>
             )}
-          </section>
-        )}
+          </div>
 
-        {/* ── ADMIN ALL EMPLOYEES DIRECTORY ── */}
-        {isAdmin && (
-          <section className="home-section">
-            <div className="home-dir-header">
-              <h2 className="home-section-title" style={{ margin: 0 }}>
-                All Employees Directory
-              </h2>
-              {employees.length > 0 && (
-                <div className="home-export-bar">
-                  <button
-                    onClick={() =>
-                      exportDirectoryToCSV(employees, "employee-directory")
-                    }
+          {/* ── EMPLOYEE MONTHLY SALARY, LATES, OFFS & DEDUCTION DASHBOARD SECTION ── */}
+          {!isAdmin && myMonthStats && (
+            <section className="home-section">
+              <div className="home-dir-header">
+                <h2 className="home-section-title" style={{ margin: 0 }}>
+                  Monthly Attendance, Offs & Salary Breakdown — {currentMonth}
+                </h2>
+                <button
+                  onClick={() =>
+                    exportEmployeeSalarySlipPDF({
+                      employee: userData,
+                      stats: myMonthStats,
+                      month: currentMonth,
+                    })
+                  }
+                  style={{
+                    background: "linear-gradient(135deg, #6d3aff, #a78bfa)",
+                    color: "#fff",
+                    border: "none",
+                    borderRadius: "10px",
+                    padding: "9px 18px",
+                    fontSize: "13px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  Download My Salary Slip PDF
+                </button>
+              </div>
+
+              <div className="home-emp-breakdown-grid">
+                {/* Left Card: Salary Statement */}
+                <div className="home-widget">
+                  <div className="widget-header">
+                    <h3>Salary & Deduction Statement</h3>
+                    <span style={{ fontSize: "12px", color: "#c4b5fd", fontWeight: 600 }}>
+                      {currentMonth}
+                    </span>
+                  </div>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                    <div className="home-clean-row">
+                      <span style={{ color: "rgba(240,238,255,0.65)" }}>Base Monthly Salary</span>
+                      <strong>
+                        Rs. {Math.round(Number(userData.salary) || 0).toLocaleString()}
+                      </strong>
+                    </div>
+                    <div className="home-clean-row">
+                      <span style={{ color: "rgba(240,238,255,0.65)" }}>
+                        Scheduled Working Days ({currentMonth})
+                      </span>
+                      <strong>
+                        {myMonthStats.workingDaysInMonth ?? 0} Days (Rs.{" "}
+                        {Math.round(myMonthStats.perDayRate ?? 0).toLocaleString()}/day)
+                      </strong>
+                    </div>
+                    <div className="home-clean-row">
+                      <span style={{ color: "rgba(240,238,255,0.65)" }}>
+                        Days Present (On-Time / Late)
+                      </span>
+                      <strong>
+                        {myMonthStats.presentCount ?? 0} Present ({myMonthStats.onTimeCount ?? 0}{" "}
+                        On-Time, {myMonthStats.lateCount ?? 0} Late)
+                      </strong>
+                    </div>
+                    <div className="home-clean-row">
+                      <span style={{ color: "rgba(240,238,255,0.65)" }}>
+                        Total Salary Deduction (Katoti)
+                      </span>
+                      <strong
+                        style={{
+                          color: (myMonthStats.deduction ?? 0) > 0 ? "#f87171" : "#4ade80",
+                        }}
+                      >
+                        {(myMonthStats.deduction ?? 0) > 0
+                          ? `- Rs. ${Math.round(myMonthStats.deduction).toLocaleString()}`
+                          : "Rs. 0 (No Cut)"}
+                      </strong>
+                    </div>
+                    <div className="home-clean-row home-clean-row-highlight">
+                      <span style={{ fontWeight: 700, color: "#fff" }}>
+                        Net Payable Salary ({currentMonth})
+                      </span>
+                      <strong style={{ fontSize: "16px", color: "#fff" }}>
+                        Rs. {Math.round(myMonthStats.netSalary ?? 0).toLocaleString()}
+                      </strong>
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      marginTop: "14px",
+                      padding: "12px 14px",
+                      borderRadius: "12px",
+                      background:
+                        (myMonthStats.deduction ?? 0) > 0
+                          ? "rgba(239, 68, 68, 0.1)"
+                          : "rgba(74, 222, 128, 0.08)",
+                      border:
+                        (myMonthStats.deduction ?? 0) > 0
+                          ? "1px solid rgba(239, 68, 68, 0.3)"
+                          : "1px solid rgba(74, 222, 128, 0.25)",
+                      fontSize: "12.5px",
+                      lineHeight: 1.55,
+                      color: "#f0eeff",
+                    }}
                   >
-                    CSV
-                  </button>
-                  <button
-                    onClick={() =>
-                      exportDirectoryToExcel(employees, "employee-directory")
-                    }
-                  >
-                    Excel
-                  </button>
-                  <button
-                    onClick={() =>
-                      exportDirectoryToPDF(employees, "employee-directory")
-                    }
-                  >
-                    PDF
-                  </button>
-                  <button
-                    onClick={() => printElement("employee-directory-table")}
-                  >
-                    Print
-                  </button>
+                    {(myMonthStats.deduction ?? 0) > 0 ? (
+                      <>
+                        <strong style={{ color: "#fca5a5" }}>
+                          Salary Deduction: Rs. {Math.round(myMonthStats.deduction).toLocaleString()}
+                        </strong>
+                        <br />
+                        Aap ki Total <strong>{myMonthStats.offEquivalents} Off(s)</strong> mein se{" "}
+                        <strong>{myMonthStats.freeOffsAllowed} Free Offs</strong> minus karne ke baad{" "}
+                        <strong>{myMonthStats.deductibleOffs} Off(s)</strong> par Rs.{" "}
+                        {Math.round(myMonthStats.perDayRate).toLocaleString()}/day ke hisab se katoti
+                        hui hai.
+                      </>
+                    ) : (
+                      <>
+                        <strong style={{ color: "#86efac" }}>
+                          Koi Salary Deduction Nahi Hui (Rs. 0 Cut)
+                        </strong>
+                        <br />
+                        {(myMonthStats.offEquivalents ?? 0) > 0 ? (
+                          <>
+                            Aap ki <strong>{myMonthStats.lateCount} Lates</strong> se{" "}
+                            <strong>{myMonthStats.offFromLates} Off(s)</strong> aur{" "}
+                            <strong>{myMonthStats.absentCount} Absent</strong> se total{" "}
+                            <strong>{myMonthStats.offEquivalents} Off(s)</strong> bani hain, jo
+                            Company ke <strong>{myMonthStats.freeOffsAllowed} Free Offs</strong>{" "}
+                            quota mein cover ho gayi hain.
+                          </>
+                        ) : (
+                          <>Aap ki is mahine abhi tak koi Off ya Salary Deduction nahi hai.</>
+                        )}
+                      </>
+                    )}
+                  </div>
                 </div>
-              )}
-            </div>
-            {empLoading ? (
-              <p style={{ fontSize: "13px", color: "rgba(240,238,255,0.5)" }}>
-                Loading...
-              </p>
-            ) : employees.length === 0 ? (
-              <p style={{ fontSize: "13px", color: "rgba(240,238,255,0.5)" }}>
-                No employees found yet.
-              </p>
-            ) : (
-              <div className="home-dir-card">
-                <div id="employee-directory-table" className="home-dir-scroll">
-                  <table className="home-dir-table">
-                    <thead>
-                      <tr>
-                        <th>Name</th>
-                        <th>Email</th>
-                        <th>Role</th>
-                        <th>Phone</th>
-                        <th>CNIC</th>
-                        <th>DOB</th>
-                        <th>Address</th>
-                        <th>Payment</th>
-                        <th>Bank</th>
-                        <th>Acc Title</th>
-                        <th>Acc Number</th>
-                        <th data-no-print>Admin Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {employees.map((emp) => (
-                        <tr key={emp.uid}>
-                          <td>{displayNameFor(emp)}</td>
-                          <td>{emp.email || "—"}</td>
-                          <td>
-                            {emp.isAttendanceExempt ? (
-                              <span style={{ color: "#c4b5fd" }}>
-                                {emp.designation || "Office Boy"} (Payroll Only)
-                              </span>
-                            ) : (
-                              <span
-                                style={{
-                                  cursor: "pointer",
-                                  textDecoration: "underline",
-                                  color:
-                                    emp.role === "admin" ? "#a78bfa" : "inherit",
-                                }}
-                                title="Click to switch role (Admin / Employee)"
-                                onClick={() => handleToggleRole(emp)}
-                              >
-                                {emp.role || "employee"}
-                              </span>
-                            )}
-                          </td>
-                          <td>{emp.personalInfo?.phone || "—"}</td>
-                          <td>{emp.personalInfo?.cnic || "—"}</td>
-                          <td>{emp.personalInfo?.dob || "—"}</td>
-                          <td>{emp.personalInfo?.address || "—"}</td>
-                          <td>{emp.bankDetails?.method || "—"}</td>
-                          <td>{emp.bankDetails?.providerName || "—"}</td>
-                          <td>{emp.bankDetails?.accountTitle || "—"}</td>
-                          <td>{emp.bankDetails?.accountNumber || "—"}</td>
-                          <td data-no-print>
-                            <button
-                              type="button"
-                              onClick={() => navigate(`/profile?uid=${emp.uid}`)}
+
+                {/* Right Card: Offs Calculation & Exact Late Dates */}
+                <div className="home-widget">
+                  <div className="widget-header">
+                    <h3>How Your Offs Are Calculated</h3>
+                    <span style={{ fontSize: "12px", color: "rgba(240,238,255,0.5)" }}>
+                      Policy: {myMonthStats.latesPerOff} Lates = 1 Off
+                    </span>
+                  </div>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                    <div className="home-clean-row">
+                      <span>
+                        1. Lates Penalty ({myMonthStats.latesPerOff} Lates = 1 Off)
+                      </span>
+                      <strong style={{ color: "#fde047" }}>
+                        {myMonthStats.lateCount ?? 0} Lates = {myMonthStats.offFromLates ?? 0} Off(s)
+                      </strong>
+                    </div>
+
+                    <div className="home-clean-row">
+                      <span>2. Unapproved Absents (1 Absent = 1 Off)</span>
+                      <strong
+                        style={{
+                          color: (myMonthStats.absentCount ?? 0) > 0 ? "#f87171" : "#f0eeff",
+                        }}
+                      >
+                        {myMonthStats.absentCount ?? 0} Absent = {myMonthStats.absentCount ?? 0} Off(s)
+                      </strong>
+                    </div>
+
+                    <div className="home-clean-row home-clean-row-highlight">
+                      <span>
+                        3. Total Offs ({myMonthStats.offFromLates ?? 0} Late Off +{" "}
+                        {myMonthStats.absentCount ?? 0} Absent)
+                      </span>
+                      <strong>{myMonthStats.offEquivalents ?? 0} Total Off(s)</strong>
+                    </div>
+
+                    <div className="home-clean-row">
+                      <span>
+                        4. Monthly Free Offs Relief ({myMonthStats.freeOffsAllowed ?? 2} Allowed)
+                      </span>
+                      <strong style={{ color: "#4ade80" }}>
+                        -{" "}
+                        {myMonthStats.freeOffsUsed ??
+                          Math.min(
+                            myMonthStats.offEquivalents ?? 0,
+                            myMonthStats.freeOffsAllowed ?? 2
+                          )}{" "}
+                        Free Off(s) Waived
+                      </strong>
+                    </div>
+
+                    <div className="home-clean-row">
+                      <span>5. Net Deductible Offs (Jin par Salary Kategi)</span>
+                      <strong
+                        style={{
+                          color: (myMonthStats.deductibleOffs ?? 0) > 0 ? "#f87171" : "#4ade80",
+                        }}
+                      >
+                        {myMonthStats.deductibleOffs ?? 0} Deductible Off(s)
+                      </strong>
+                    </div>
+                  </div>
+
+                  {Array.isArray(myMonthStats.lateRecords) &&
+                    myMonthStats.lateRecords.length > 0 && (
+                      <div
+                        style={{
+                          marginTop: "14px",
+                          padding: "12px 14px",
+                          borderRadius: "12px",
+                          background: "rgba(250, 204, 21, 0.06)",
+                          border: "1px solid rgba(250, 204, 21, 0.22)",
+                        }}
+                      >
+                        <div
+                          style={{
+                            fontSize: "12px",
+                            fontWeight: 600,
+                            color: "#fde047",
+                            marginBottom: "8px",
+                          }}
+                        >
+                          Jin Tareekhon Par Aap Late Aaye ({myMonthStats.lateRecords.length} Lates ={" "}
+                          {myMonthStats.offFromLates} Off):
+                        </div>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                          {myMonthStats.lateRecords.map((lr) => (
+                            <span
+                              key={lr.date}
                               style={{
-                                background: "rgba(109,58,255,0.22)",
-                                border: "1px solid rgba(167,139,250,0.4)",
-                                color: "#e9d5ff",
-                                padding: "4px 10px",
-                                borderRadius: "6px",
                                 fontSize: "11.5px",
-                                cursor: "pointer",
+                                background: "rgba(0,0,0,0.35)",
+                                border: "1px solid rgba(250, 204, 21, 0.28)",
+                                color: "#fef08a",
+                                padding: "5px 9px",
+                                borderRadius: "7px",
                               }}
                             >
-                              Edit Details
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                              {lr.date} · {lr.time} (+{lr.lateMinutes}m)
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                 </div>
               </div>
-            )}
-          </section>
-        )}
+            </section>
+          )}
+
+          {/* ── ADMIN EMPLOYEE SALARIES SECTION ── */}
+          {isAdmin && (
+            <section className="home-section">
+              <div className="home-dir-header">
+                <h2 className="home-section-title" style={{ margin: 0 }}>
+                  Employee Payroll Overview — {currentMonth}
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => navigate("/manage-salary")}
+                  style={{
+                    background: "rgba(167, 139, 250, 0.14)",
+                    border: "1px solid rgba(167, 139, 250, 0.35)",
+                    color: "#e9d5ff",
+                    borderRadius: "9px",
+                    padding: "8px 14px",
+                    fontSize: "12.5px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  Open Full Payroll & Slips
+                </button>
+              </div>
+              {empLoading ? (
+                <p style={{ fontSize: "13px", color: "rgba(240,238,255,0.5)" }}>
+                  Loading...
+                </p>
+              ) : employees.length === 0 ? (
+                <p style={{ fontSize: "13px", color: "rgba(240,238,255,0.5)" }}>
+                  No employees found yet.
+                </p>
+              ) : (
+                <div className="home-emp-grid">
+                  {employees.map((emp) => {
+                    const s = empStats[emp.uid] || {};
+                    const empInitial = displayNameFor(emp)
+                      .charAt(0)
+                      .toUpperCase();
+                    return (
+                      <div className="home-emp-card" key={emp.uid}>
+                        <div className="home-emp-header" style={{ justifyContent: "space-between" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                            {emp.photoURL ? (
+                              <img
+                                src={emp.photoURL}
+                                alt={displayNameFor(emp)}
+                                style={{
+                                  width: "36px",
+                                  height: "36px",
+                                  borderRadius: "10px",
+                                  objectFit: "cover",
+                                }}
+                              />
+                            ) : (
+                              <span className="home-emp-avatar">{empInitial}</span>
+                            )}
+                            <div>
+                              <span className="home-emp-name" style={{ display: "block" }}>
+                                {displayNameFor(emp)}
+                              </span>
+                              <small style={{ fontSize: "11px", color: "rgba(240,238,255,0.45)" }}>
+                                {emp.isAttendanceExempt
+                                  ? `${emp.designation || "Office Boy"} · Payroll Only`
+                                  : `Base: Rs. ${Math.round(Number(emp.salary) || 0).toLocaleString()}`}
+                              </small>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              exportEmployeeSalarySlipPDF({
+                                employee: emp,
+                                stats: s,
+                                month: currentMonth,
+                              })
+                            }
+                            style={{
+                              background: "rgba(167,139,250,0.14)",
+                              border: "1px solid rgba(167,139,250,0.32)",
+                              color: "#e9d5ff",
+                              borderRadius: "8px",
+                              padding: "6px 10px",
+                              fontSize: "11.5px",
+                              fontWeight: 600,
+                              cursor: "pointer",
+                            }}
+                            title="Download PDF Salary Slip"
+                          >
+                            PDF Slip
+                          </button>
+                        </div>
+
+                        <div className="home-emp-net">
+                          <span className="home-emp-net-label">Net Payable</span>
+                          <span className="home-emp-net-value">
+                            Rs. {Math.round(s.netSalary ?? 0).toLocaleString()}
+                          </span>
+                        </div>
+
+                        {emp.isAttendanceExempt ? (
+                          <div className="home-emp-stats">
+                            <div className="home-emp-stat">
+                              <span className="home-emp-stat-label">CNIC</span>
+                              <span className="home-emp-stat-value">
+                                {emp.personalInfo?.cnic || "—"}
+                              </span>
+                            </div>
+                            <div className="home-emp-stat">
+                              <span className="home-emp-stat-label">Bank / Wallet</span>
+                              <span className="home-emp-stat-value">
+                                {emp.bankDetails?.providerName || emp.bankDetails?.method || "—"}
+                              </span>
+                            </div>
+                            <div className="home-emp-stat">
+                              <span className="home-emp-stat-label">Account No.</span>
+                              <span className="home-emp-stat-value">
+                                {emp.bankDetails?.accountNumber || "—"}
+                              </span>
+                            </div>
+                            <div className="home-emp-stat">
+                              <span className="home-emp-stat-label">Attendance</span>
+                              <span className="home-emp-stat-value" style={{ color: "#4ade80" }}>
+                                Exempt
+                              </span>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="home-emp-stats">
+                            <div className="home-emp-stat">
+                              <span className="home-emp-stat-label">
+                                Lates ({s.latesPerOff ?? 3} = 1 Off)
+                              </span>
+                              <span className="home-emp-stat-value">
+                                {s.lateCount ?? 0} Lates → {s.offFromLates ?? 0} Off
+                              </span>
+                            </div>
+                            <div className="home-emp-stat">
+                              <span className="home-emp-stat-label">
+                                Unapproved Absent
+                              </span>
+                              <span className="home-emp-stat-value">
+                                {s.absentCount ?? 0} Absent → {s.absentCount ?? 0} Off
+                              </span>
+                            </div>
+                            <div className="home-emp-stat">
+                              <span className="home-emp-stat-label">Total / Ded. Offs</span>
+                              <span className="home-emp-stat-value">
+                                {s.offEquivalents ?? 0} Total ({s.deductibleOffs ?? 0} Cut)
+                              </span>
+                            </div>
+                            <div className="home-emp-stat">
+                              <span className="home-emp-stat-label">Salary Cut</span>
+                              <span
+                                className="home-emp-stat-value"
+                                style={{
+                                  color: (s.deduction ?? 0) > 0 ? "#f87171" : "#4ade80",
+                                }}
+                              >
+                                {(s.deduction ?? 0) > 0
+                                  ? `- Rs. ${Math.round(s.deduction).toLocaleString()}`
+                                  : "Rs. 0"}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+          )}
+
+          {/* ── ADMIN ALL EMPLOYEES DIRECTORY ── */}
+          {isAdmin && (
+            <section className="home-section">
+              <div className="home-dir-header">
+                <h2 className="home-section-title" style={{ margin: 0 }}>
+                  All Employees Directory
+                </h2>
+                {employees.length > 0 && (
+                  <div className="home-export-bar">
+                    <button
+                      onClick={() =>
+                        exportDirectoryToCSV(employees, "employee-directory")
+                      }
+                    >
+                      CSV
+                    </button>
+                    <button
+                      onClick={() =>
+                        exportDirectoryToExcel(employees, "employee-directory")
+                      }
+                    >
+                      Excel
+                    </button>
+                    <button
+                      onClick={() =>
+                        exportDirectoryToPDF(employees, "employee-directory")
+                      }
+                    >
+                      PDF
+                    </button>
+                    <button
+                      onClick={() => printElement("employee-directory-table")}
+                    >
+                      Print
+                    </button>
+                  </div>
+                )}
+              </div>
+              {empLoading ? (
+                <p style={{ fontSize: "13px", color: "rgba(240,238,255,0.5)" }}>
+                  Loading...
+                </p>
+              ) : employees.length === 0 ? (
+                <p style={{ fontSize: "13px", color: "rgba(240,238,255,0.5)" }}>
+                  No employees found yet.
+                </p>
+              ) : (
+                <div className="home-dir-card">
+                  <div id="employee-directory-table" className="home-dir-scroll">
+                    <table className="home-dir-table">
+                      <thead>
+                        <tr>
+                          <th>Employee</th>
+                          <th>Role</th>
+                          <th>Phone & CNIC</th>
+                          <th>Bank / Wallet</th>
+                          <th>Account Title & Number</th>
+                          <th data-no-print>Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {employees.map((emp) => (
+                          <tr key={emp.uid}>
+                            <td>
+                              <div style={{ fontWeight: 600, color: "#fff" }}>
+                                {displayNameFor(emp)}
+                              </div>
+                              <div style={{ fontSize: "11.5px", color: "rgba(240,238,255,0.48)" }}>
+                                {emp.isAttendanceExempt
+                                  ? emp.designation || "Support Staff"
+                                  : emp.email || "—"}
+                              </div>
+                            </td>
+                            <td>
+                              {emp.isAttendanceExempt ? (
+                                <span
+                                  style={{
+                                    fontSize: "11.5px",
+                                    background: "rgba(167, 139, 250, 0.14)",
+                                    color: "#d8b4fe",
+                                    padding: "3px 8px",
+                                    borderRadius: "6px",
+                                  }}
+                                >
+                                  {emp.designation || "Office Boy"}
+                                </span>
+                              ) : (
+                                <span
+                                  style={{
+                                    cursor: "pointer",
+                                    fontSize: "11.5px",
+                                    background:
+                                      emp.role === "admin"
+                                        ? "rgba(109, 58, 255, 0.22)"
+                                        : "rgba(255, 255, 255, 0.06)",
+                                    border: "1px solid rgba(255, 255, 255, 0.12)",
+                                    color: emp.role === "admin" ? "#c4b5fd" : "#e2e8f0",
+                                    padding: "3px 9px",
+                                    borderRadius: "6px",
+                                    textTransform: "capitalize",
+                                  }}
+                                  title="Click to switch role (Admin / Employee)"
+                                  onClick={() => handleToggleRole(emp)}
+                                >
+                                  {emp.role || "employee"}
+                                </span>
+                              )}
+                            </td>
+                            <td>
+                              <div>{emp.personalInfo?.phone || "—"}</div>
+                              <div style={{ fontSize: "11.5px", color: "rgba(240,238,255,0.48)" }}>
+                                CNIC: {emp.personalInfo?.cnic || "—"}
+                              </div>
+                            </td>
+                            <td>
+                              <div style={{ textTransform: "uppercase", fontSize: "11.5px", color: "#c4b5fd" }}>
+                                {emp.bankDetails?.method || "—"}
+                              </div>
+                              <div>{emp.bankDetails?.providerName || "—"}</div>
+                            </td>
+                            <td>
+                              <div>{emp.bankDetails?.accountTitle || "—"}</div>
+                              <div style={{ fontSize: "11.5px", color: "rgba(240,238,255,0.52)" }}>
+                                {emp.bankDetails?.accountNumber || emp.bankDetails?.iban || "—"}
+                              </div>
+                            </td>
+                            <td data-no-print>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  navigate(
+                                    emp.isAttendanceExempt
+                                      ? "/manage-salary"
+                                      : `/profile?uid=${emp.uid}`
+                                  )
+                                }
+                                style={{
+                                  background: "rgba(109,58,255,0.2)",
+                                  border: "1px solid rgba(167,139,250,0.35)",
+                                  color: "#e9d5ff",
+                                  padding: "6px 12px",
+                                  borderRadius: "7px",
+                                  fontSize: "12px",
+                                  fontWeight: 600,
+                                  cursor: "pointer",
+                                }}
+                              >
+                                Edit Details
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </section>
+          )}
+        </div>
 
         {/* ── ADMIN EMAIL / SMTP SETTINGS MODAL ── */}
         {showSmtpModal && (

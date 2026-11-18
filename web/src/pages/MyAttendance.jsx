@@ -1,7 +1,17 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { getCurrentUser, fetchUserById, fetchAttendance, fetchLeaves, fetchHolidays } from "../api";
-import { getLocalMonthStr } from "../utils/attendanceHelpers";
+import {
+  getCurrentUser,
+  fetchUserById,
+  fetchAttendance,
+  fetchLeaves,
+  fetchHolidays,
+  fetchPolicies,
+} from "../api";
+import {
+  getLocalMonthStr,
+  calculateSalaryStats,
+} from "../utils/attendanceHelpers";
 import { buildMonthRows } from "../utils/monthattendance";
 import {
   exportMonthToCSV,
@@ -24,10 +34,12 @@ function kindClass(kind) {
 function MyAttendance() {
   const currentMonth = getLocalMonthStr();
   const [userName, setUserName] = useState("");
+  const [baseSalary, setBaseSalary] = useState(0);
   const [schedule, setSchedule] = useState(null);
   const [records, setRecords] = useState([]);
   const [leaves, setLeaves] = useState([]);
   const [holidays, setHolidays] = useState([]);
+  const [policies, setPolicies] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [selectedMonth, setSelectedMonth] = useState(currentMonth);
@@ -44,19 +56,22 @@ function MyAttendance() {
         if (!currentUser) return;
         const uid = currentUser.uid;
 
-        const [userData, attList, leaveList, holidayList] = await Promise.all([
+        const [userData, attList, leaveList, holidayList, policyData] = await Promise.all([
           fetchUserById(uid),
           fetchAttendance({ uid, month: selectedMonth }),
           fetchLeaves({ uid, status: "approved" }),
           fetchHolidays().catch(() => []),
+          fetchPolicies().catch(() => null),
         ]);
         if (cancelled) return;
 
         setUserName(userData?.name || currentUser.displayName || "");
+        setBaseSalary(Number(userData?.salary) || 0);
         setSchedule(userData?.schedule || null);
         setRecords(attList);
         setLeaves(leaveList);
         setHolidays(holidayList || []);
+        setPolicies(policyData);
       } catch (err) {
         if (err?.name !== "AbortError" && !cancelled) setError(err.message);
       } finally {
@@ -74,15 +89,27 @@ function MyAttendance() {
     ? { rows: [], summary: null }
     : buildMonthRows({ month: selectedMonth, schedule, records, leaves, holidays });
 
+  const salaryStats = loading
+    ? null
+    : calculateSalaryStats({
+        records,
+        schedule,
+        baseSalary,
+        month: selectedMonth,
+        approvedLeaves: leaves,
+        policies,
+        holidays,
+      });
+
   const stats = summary
     ? [
         ["Present", summary.present],
         ["On time", summary.onTime],
         ["Late", summary.late],
-        ["Extreme late", summary.extremeLate],
-        ["Absent", summary.absent],
-        ["Leave", summary.leave],
-        ["Early leave", summary.early],
+        ["Offs from Lates", salaryStats?.offFromLates ?? 0],
+        ["Absent (Off)", summary.absent],
+        ["Total Offs", salaryStats?.offEquivalents ?? 0],
+        ["Deductible Offs", salaryStats?.deductibleOffs ?? 0],
       ]
     : [];
 
@@ -149,6 +176,166 @@ function MyAttendance() {
                   <span className="my-attendance-stat-label">{label}</span>
                 </div>
               ))}
+            </div>
+          )}
+
+          {salaryStats && (
+            <div
+              className="my-attendance-card"
+              style={{
+                marginBottom: "18px",
+                padding: "18px 20px",
+                display: "flex",
+                flexDirection: "column",
+                gap: "10px",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  gap: "8px",
+                  borderBottom: "1px solid rgba(255,255,255,0.1)",
+                  paddingBottom: "10px",
+                }}
+              >
+                <strong style={{ fontSize: "15px", color: "#f0eeff" }}>
+                  Lates, Offs & Salary Deduction Breakdown ({selectedMonth})
+                </strong>
+                <span
+                  style={{
+                    fontSize: "13px",
+                    fontWeight: 700,
+                    padding: "5px 12px",
+                    borderRadius: "8px",
+                    background:
+                      (salaryStats.deduction ?? 0) > 0
+                        ? "rgba(239, 68, 68, 0.16)"
+                        : "rgba(74, 222, 128, 0.14)",
+                    color: (salaryStats.deduction ?? 0) > 0 ? "#fca5a5" : "#86efac",
+                    border:
+                      (salaryStats.deduction ?? 0) > 0
+                        ? "1px solid rgba(239, 68, 68, 0.35)"
+                        : "1px solid rgba(74, 222, 128, 0.3)",
+                  }}
+                >
+                  {(salaryStats.deduction ?? 0) > 0
+                    ? `Salary Cut: - Rs. ${Math.round(salaryStats.deduction).toLocaleString()} | Net: Rs. ${Math.round(salaryStats.netSalary).toLocaleString()}`
+                    : `Rs. 0 Salary Cut | Net Salary: Rs. ${Math.round(salaryStats.netSalary).toLocaleString()}`}
+                </span>
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                  gap: "10px",
+                  fontSize: "12.5px",
+                }}
+              >
+                <div
+                  style={{
+                    background: "rgba(255,255,255,0.04)",
+                    padding: "10px 12px",
+                    borderRadius: "8px",
+                  }}
+                >
+                  <div style={{ color: "rgba(240,238,255,0.6)", marginBottom: "4px" }}>
+                    1. Lates se Banne Wali Offs (Har {salaryStats.latesPerOff} Late = 1 Off)
+                  </div>
+                  <strong style={{ fontSize: "14px", color: "#fde047" }}>
+                    {salaryStats.lateCount} Lates = {salaryStats.offFromLates} Off(s)
+                  </strong>
+                </div>
+
+                <div
+                  style={{
+                    background: "rgba(255,255,255,0.04)",
+                    padding: "10px 12px",
+                    borderRadius: "8px",
+                  }}
+                >
+                  <div style={{ color: "rgba(240,238,255,0.6)", marginBottom: "4px" }}>
+                    2. Unapproved Absents (1 Absent = 1 Off)
+                  </div>
+                  <strong style={{ fontSize: "14px", color: "#f0eeff" }}>
+                    {salaryStats.absentCount} Absent = {salaryStats.absentCount} Off(s)
+                  </strong>
+                </div>
+
+                <div
+                  style={{
+                    background: "rgba(167, 139, 250, 0.12)",
+                    padding: "10px 12px",
+                    borderRadius: "8px",
+                    border: "1px solid rgba(167, 139, 250, 0.25)",
+                  }}
+                >
+                  <div style={{ color: "rgba(240,238,255,0.75)", marginBottom: "4px" }}>
+                    3. Total Offs & Free Offs Relief
+                  </div>
+                  <strong style={{ fontSize: "14px", color: "#e9d5ff" }}>
+                    {salaryStats.offEquivalents} Total Off(s) ({salaryStats.freeOffsAllowed} Free Allowed)
+                  </strong>
+                </div>
+
+                <div
+                  style={{
+                    background: "rgba(255,255,255,0.04)",
+                    padding: "10px 12px",
+                    borderRadius: "8px",
+                  }}
+                >
+                  <div style={{ color: "rgba(240,238,255,0.6)", marginBottom: "4px" }}>
+                    4. Net Deductible Offs & Deduction
+                  </div>
+                  <strong
+                    style={{
+                      fontSize: "14px",
+                      color: (salaryStats.deductibleOffs ?? 0) > 0 ? "#f87171" : "#4ade80",
+                    }}
+                  >
+                    {salaryStats.deductibleOffs} Deductible Off(s) = Rs.{" "}
+                    {Math.round(salaryStats.deduction ?? 0).toLocaleString()}
+                  </strong>
+                </div>
+              </div>
+
+              {Array.isArray(salaryStats.lateRecords) &&
+                salaryStats.lateRecords.length > 0 && (
+                  <div
+                    style={{
+                      padding: "10px 12px",
+                      borderRadius: "8px",
+                      background: "rgba(250, 204, 21, 0.08)",
+                      border: "1px solid rgba(250, 204, 21, 0.25)",
+                      fontSize: "12px",
+                    }}
+                  >
+                    <div style={{ fontWeight: 600, color: "#fde047", marginBottom: "6px" }}>
+                      Aap in {salaryStats.lateRecords.length} tareekhon par Late aaye (Jin ki wajah se{" "}
+                      {salaryStats.offFromLates} Off lagi):
+                    </div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                      {salaryStats.lateRecords.map((lr) => (
+                        <span
+                          key={lr.date}
+                          style={{
+                            background: "rgba(0,0,0,0.35)",
+                            border: "1px solid rgba(250, 204, 21, 0.3)",
+                            color: "#fef08a",
+                            padding: "4px 8px",
+                            borderRadius: "6px",
+                          }}
+                        >
+                          {lr.date}: {lr.time} ({lr.lateMinutes}m late)
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
             </div>
           )}
 

@@ -309,7 +309,7 @@ function DailyAttendance() {
 
   const exportRows = rows.map((r) => ({
     name: r.name,
-    displayStatus: r.editedBy ? `${r.displayStatus} (${r.editedBy})` : r.displayStatus,
+    displayStatus: r.displayStatus,
     time: r.time,
   }));
 
@@ -352,11 +352,6 @@ function DailyAttendance() {
                     ? "Not checked in yet"
                     : me.displayStatus}
               </p>
-              {me.editedBy && (
-                <small style={{ display: "block", color: "#c4b5fd", marginTop: "4px", fontSize: "11.5px" }}>
-                  {me.editedBy}
-                </small>
-              )}
             </div>
             <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
               {isToday && !me.checkedIn && (
@@ -484,14 +479,6 @@ function DailyAttendance() {
                             Early leave {formatHM12(r.early.earlyLeaveTime)}
                           </small>
                         )}
-                        {r.editedBy && (
-                          <small
-                            className="daily-early-note"
-                            style={{ color: "#c4b5fd", display: "block", marginTop: "3px" }}
-                          >
-                            {r.editedBy}
-                          </small>
-                        )}
                       </td>
                       <td>{r.time || "—"}</td>
                       <td>
@@ -525,7 +512,6 @@ function DailyAttendance() {
                                   padding: "4px 9px",
                                   borderRadius: "6px",
                                 }}
-                                title={r.editedBy}
                               >
                                 Edited (1/1)
                               </span>
@@ -589,8 +575,7 @@ function DailyAttendance() {
             <p style={{ fontSize: "12.5px", color: "rgba(240, 238, 255, 0.68)", lineHeight: 1.5, margin: "0 0 14px" }}>
               Employee: <strong>{editModal.name}</strong> · Date: <strong>{selectedDate}</strong>
               <br />
-              Note: Attendance time sirf <strong>1 dafa</strong> edit ho sakti hai aur uske aage{" "}
-              <strong>Edited by {currentUser?.name || "Admin"}</strong> likha aa jayega.
+              Note: Attendance time sirf <strong>1 dafa</strong> edit ho sakti hai.
             </p>
             <form onSubmit={handleSaveEditTime} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
               <label style={{ fontSize: "12.5px", display: "flex", flexDirection: "column", gap: "6px" }}>

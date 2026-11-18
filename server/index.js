@@ -816,9 +816,7 @@ app.put("/api/attendance/edit-time", authMiddleware, async (req, res) => {
       policy
     );
 
-    const adminName =
-      caller.full_name || caller.name || "Admin";
-    const editedByLabel = `Edited by ${adminName}`;
+    const editedByLabel = "";
     const empName =
       emp.fullName || emp.name || emp.email.split("@")[0] || "Employee";
     const monthStr = cleanDate.slice(0, 7);

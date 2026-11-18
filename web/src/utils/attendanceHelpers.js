@@ -494,6 +494,16 @@ export function calculateSalaryStats({
     (r) => r._status === STATUS.UNSCHEDULED
   ).length;
 
+  const lateRecords = normalized
+    .filter((r) => r._status === STATUS.LATE || r._status === STATUS.EXTREME_LATE)
+    .sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")))
+    .map((r) => ({
+      date: r.date,
+      time: formatTime12(r.checkInTime),
+      lateMinutes: Number(r.lateMinutes) || 0,
+      status: r._status,
+    }));
+
   const scheduledDates = getScheduledDatesUpTo(
     schedule,
     monthStr,
@@ -511,6 +521,7 @@ export function calculateSalaryStats({
   let approvedLeaveCount = 0;
   let earlyLeaveCount = 0;
   let officialHolidayCount = 0;
+  const absentDates = [];
 
   for (const dateStr of scheduledDates) {
     if (presentDates.has(dateStr)) {
@@ -537,6 +548,7 @@ export function calculateSalaryStats({
     }
 
     absentCount += 1;
+    absentDates.push(dateStr);
   }
 
   const workingDaysSoFar = scheduledDates.length;
@@ -572,8 +584,12 @@ export function calculateSalaryStats({
   const absentDeductionGross = absentCount * perDayRate;
   const lateDeductionGross = (offFromLates + offFromExtremeLates) * perDayRate;
   const earlyLeaveDeductionGross = offFromEarlyLeaves * perDayRate;
-  const freeOffCredit =
-    Math.min(offEquivalents, activePolicy.freeOffsPerMonth) * perDayRate;
+  const freeOffsUsed = Math.min(offEquivalents, activePolicy.freeOffsPerMonth);
+  const remainingFreeOffs = Math.max(
+    activePolicy.freeOffsPerMonth - offEquivalents,
+    0
+  );
+  const freeOffCredit = freeOffsUsed * perDayRate;
 
   const deduction = deductibleOffs * perDayRate;
   const netSalary = Math.max(base - deduction, 0);
@@ -586,6 +602,8 @@ export function calculateSalaryStats({
     extremeLateCount,
     unscheduledCount,
     absentCount,
+    lateRecords,
+    absentDates,
     approvedLeaveCount,
     officialHolidayCount,
     earlyLeaveCount,
@@ -594,6 +612,8 @@ export function calculateSalaryStats({
     offFromEarlyLeaves,
     offEquivalents,
     freeOffsAllowed: activePolicy.freeOffsPerMonth,
+    freeOffsUsed,
+    remainingFreeOffs,
     latesPerOff: activePolicy.latesPerOff,
     extremeLatesPerOff: activePolicy.extremeLatesPerOff,
     earlyLeavesPerOff: activePolicy.earlyLeavesPerOff,

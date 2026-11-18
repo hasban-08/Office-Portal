@@ -85,9 +85,6 @@ export function buildMonthRows({
       kind = resolved.status || "on-time";
       label = statusLabel(resolved);
       time = formatTime12(resolved.checkInTime);
-      if (resolved.editedBy) {
-        note = resolved.editedBy;
-      }
       summary.present += 1;
       if (kind === "late") summary.late += 1;
       else if (kind === "extreme-late") summary.extremeLate += 1;
