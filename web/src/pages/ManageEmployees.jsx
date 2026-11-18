@@ -138,6 +138,8 @@ function ManageEmployees() {
             <div className="sched-days">
               {employees.map((emp) => {
                 const name = displayNameFor(emp);
+                const isBossRole =
+                  String(emp.designation || "").toLowerCase() === "boss";
                 const isAdminRole = emp.role === "admin";
                 const isActive = emp.isActive !== false;
                 const isMe = emp.uid === currentUser?.uid;
@@ -201,16 +203,24 @@ function ManageEmployees() {
                               padding: "2px 8px",
                               borderRadius: "999px",
                               fontWeight: 600,
-                              background: isAdminRole
-                                ? "rgba(167, 139, 250, 0.22)"
-                                : "rgba(255, 255, 255, 0.08)",
-                              color: isAdminRole ? "#c4b5fd" : "rgba(240,238,255,0.7)",
-                              border: isAdminRole
-                                ? "1px solid rgba(167, 139, 250, 0.4)"
-                                : "1px solid rgba(255,255,255,0.12)",
+                              background: isBossRole
+                                ? "rgba(250, 204, 21, 0.18)"
+                                : isAdminRole
+                                  ? "rgba(167, 139, 250, 0.22)"
+                                  : "rgba(255, 255, 255, 0.08)",
+                              color: isBossRole
+                                ? "#fde047"
+                                : isAdminRole
+                                  ? "#c4b5fd"
+                                  : "rgba(240,238,255,0.7)",
+                              border: isBossRole
+                                ? "1px solid rgba(250, 204, 21, 0.45)"
+                                : isAdminRole
+                                  ? "1px solid rgba(167, 139, 250, 0.4)"
+                                  : "1px solid rgba(255,255,255,0.12)",
                             }}
                           >
-                            {isAdminRole ? "Admin" : "Employee"}
+                            {isBossRole ? "Boss" : isAdminRole ? "Admin" : "Employee"}
                           </span>
 
                           <span

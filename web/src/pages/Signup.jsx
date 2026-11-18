@@ -7,6 +7,7 @@ function Signup() {
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [role, setRole] = useState("employee");
   const [submitting, setSubmitting] = useState(false);
   const navigate = useNavigate();
 
@@ -18,14 +19,19 @@ function Signup() {
     }
     setSubmitting(true);
     try {
-      await apiSignup({
+      const res = await apiSignup({
         name: username.trim(),
         email: email.trim(),
         password,
+        role,
       });
 
-      alert("Account Created Successfully! Please complete your profile.");
-      navigate("/complete-profile");
+      if (res?.user?.role === "admin" || role === "admin") {
+        navigate("/");
+      } else {
+        alert("Account Created Successfully! Please complete your profile.");
+        navigate("/complete-profile");
+      }
     } catch (error) {
       alert(error.message);
     } finally {
@@ -64,10 +70,45 @@ function Signup() {
           onChange={(e) => setPassword(e.target.value)}
           required
         />
-        <br />
+        <br /><br />
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "6px",
+            textAlign: "left",
+            marginBottom: "10px",
+          }}
+        >
+          <label
+            style={{
+              fontSize: "12px",
+              fontWeight: 600,
+              color: "rgba(240, 238, 255, 0.7)",
+              letterSpacing: "0.3px",
+            }}
+          >
+            Sign Up As (Portal Role)
+          </label>
+          <select
+            className="signup-input"
+            value={role}
+            onChange={(e) => setRole(e.target.value)}
+            style={{
+              margin: 0,
+              cursor: "pointer",
+              background: "#161229",
+              color: "#f0eeff",
+            }}
+          >
+            <option value="employee">Employee</option>
+            <option value="admin">Admin</option>
+            <option value="boss">Boss (Full Portal Access)</option>
+          </select>
+        </div>
         <p
           className="login-forgot"
-          style={{ color: "blue", cursor: "pointer", marginTop: "10px" }}
+          style={{ color: "#a78bfa", cursor: "pointer", marginTop: "10px" }}
           onClick={() => navigate("/login")}
         >
           Already have an account? Login

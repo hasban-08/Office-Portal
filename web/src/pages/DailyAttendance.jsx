@@ -363,37 +363,23 @@ function DailyAttendance() {
                   {busyUid === me.uid ? "Saving..." : "Check in"}
                 </button>
               )}
-              {isPastOrToday && (
-                me.isEdited ? (
-                  <span
-                    style={{
-                      fontSize: "11.5px",
-                      color: "rgba(240,238,255,0.5)",
-                      border: "1px solid rgba(255,255,255,0.14)",
-                      padding: "6px 10px",
-                      borderRadius: "8px",
-                    }}
-                  >
-                    Edited (1/1)
-                  </span>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => openEditTimeModal(me)}
-                    style={{
-                      background: "rgba(167, 139, 250, 0.16)",
-                      border: "1px solid rgba(167, 139, 250, 0.4)",
-                      color: "#e9d5ff",
-                      padding: "8px 12px",
-                      borderRadius: "8px",
-                      fontSize: "12px",
-                      fontWeight: 600,
-                      cursor: "pointer",
-                    }}
-                  >
-                    Edit Time (1x)
-                  </button>
-                )
+              {isPastOrToday && !me.isEdited && (
+                <button
+                  type="button"
+                  onClick={() => openEditTimeModal(me)}
+                  style={{
+                    background: "rgba(167, 139, 250, 0.16)",
+                    border: "1px solid rgba(167, 139, 250, 0.4)",
+                    color: "#e9d5ff",
+                    padding: "8px 12px",
+                    borderRadius: "8px",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  Edit Time
+                </button>
               )}
             </div>
           </div>
@@ -504,17 +490,7 @@ function DailyAttendance() {
                               </button>
                             )}
                             {r.isEdited ? (
-                              <span
-                                style={{
-                                  fontSize: "11.5px",
-                                  color: "rgba(240,238,255,0.5)",
-                                  border: "1px solid rgba(255,255,255,0.12)",
-                                  padding: "4px 9px",
-                                  borderRadius: "6px",
-                                }}
-                              >
-                                Edited (1/1)
-                              </span>
+                              <span className="daily-done">Marked</span>
                             ) : (
                               <button
                                 type="button"

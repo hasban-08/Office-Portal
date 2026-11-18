@@ -194,10 +194,10 @@ export async function apiSignup({ name, email, password, role }) {
   return data;
 }
 
-export async function apiLogin({ email, password }) {
+export async function apiLogin({ email, password, loginAs }) {
   const data = await apiRequest("/auth/login", {
     method: "POST",
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email, password, loginAs }),
   });
   setAuthSession(data.token, data.user);
   return data;

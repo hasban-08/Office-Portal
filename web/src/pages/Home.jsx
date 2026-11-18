@@ -78,6 +78,7 @@ function Home() {
   // New features state
   const [totalPayroll, setTotalPayroll] = useState(0);
   const [punctualityRate, setPunctualityRate] = useState(100);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const navigate = useNavigate();
   const currentMonth = getLocalMonthStr();
@@ -195,6 +196,20 @@ function Home() {
         if (!cancelled) {
           setEmpStats(statsMap);
           setTotalPayroll(payrollSum);
+
+          const myRecToday = todayAttList.find((r) => r.uid === userData.uid) || null;
+          setMyTodayRecord(myRecToday);
+          setMyMonthStats(statsMap[userData.uid] || null);
+
+          const myApproved = leavesByUid[userData.uid] || [];
+          setUpcomingLeaves(
+            myApproved.filter((l) => l.startDate >= todayStr || l.date >= todayStr)
+          );
+          const myRecs = monthAttByUid[userData.uid] || [];
+          const myOnTime = myRecs.filter((r) => r.status === "on-time").length;
+          setPunctualityRate(
+            myRecs.length > 0 ? Math.round((myOnTime / myRecs.length) * 100) : 100
+          );
         }
       } catch (err) {
         if (err?.name !== "AbortError") console.error("Home admin fetch:", err);
@@ -389,6 +404,9 @@ function Home() {
   }
 
   const isAdmin = userData.role === "admin";
+  const isBoss =
+    String(userData.designation || "").toLowerCase() === "boss";
+  const showAdminView = isAdmin;
   const initial = (userData.name || "U").charAt(0).toUpperCase();
 
   const attendanceEmployees = employees.filter((e) => !e.isAttendanceExempt);
@@ -409,89 +427,160 @@ function Home() {
 
   return (
     <div className="home-layout">
+      {/* ── MOBILE TOP BAR (HAMBURGER) ── */}
+      <div className="home-mobile-bar">
+        <img
+          src="/company-logo.webp"
+          alt="The Nexus Group Co"
+          style={{
+            maxHeight: "30px",
+            maxWidth: "145px",
+            width: "auto",
+            objectFit: "contain",
+          }}
+        />
+        <button
+          type="button"
+          className="home-hamburger-btn"
+          onClick={() => setMobileMenuOpen(true)}
+          aria-label="Open menu"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+            <path
+              d="M4 7h16M4 12h16M4 17h16"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+            />
+          </svg>
+        </button>
+      </div>
+
       {/* ── SIDEBAR ── */}
-      <aside className="home-sidebar">
+      <aside className={`home-sidebar ${mobileMenuOpen ? "mobile-open" : ""}`}>
         <div className="home-logo" style={{ padding: "4px 0" }}>
           <img
             src="/company-logo.webp"
             alt="The Nexus Group Co"
             style={{
-              maxHeight: "38px",
-              maxWidth: "170px",
+              maxHeight: "36px",
+              maxWidth: "160px",
               width: "auto",
               objectFit: "contain",
             }}
           />
+          <button
+            type="button"
+            className="home-sidebar-close"
+            onClick={() => setMobileMenuOpen(false)}
+            aria-label="Close menu"
+          >
+            ✕
+          </button>
         </div>
         <nav className="home-nav">
           <p className="home-nav-heading">Main Menu</p>
-          <button className="home-nav-btn active" onClick={() => navigate("/")}>
+          <button
+            className="home-nav-btn active"
+            onClick={() => {
+              setMobileMenuOpen(false);
+              navigate("/");
+            }}
+          >
             Dashboard
           </button>
           <button
             className="home-nav-btn"
-            onClick={() =>
-              navigate(isAdmin ? "/daily-attendance" : "/mark-attendance")
-            }
+            onClick={() => {
+              setMobileMenuOpen(false);
+              navigate(isAdmin ? "/daily-attendance" : "/mark-attendance");
+            }}
           >
             {isAdmin ? "Check-in Sheet" : "Today's Status"}
           </button>
           <button
             className="home-nav-btn"
-            onClick={() => navigate("/my-attendance")}
+            onClick={() => {
+              setMobileMenuOpen(false);
+              navigate("/my-attendance");
+            }}
           >
             My Attendance
           </button>
           <button
             className="home-nav-btn"
-            onClick={() => navigate("/leave-request")}
+            onClick={() => {
+              setMobileMenuOpen(false);
+              navigate("/leave-request");
+            }}
           >
             Leave / Early Leave
           </button>
           <button
             className="home-nav-btn"
-            onClick={() => navigate("/profile")}
+            onClick={() => {
+              setMobileMenuOpen(false);
+              navigate("/profile");
+            }}
           >
             My Profile
           </button>
           {isAdmin && (
             <>
-              <p className="home-nav-heading" style={{ marginTop: "24px" }}>
+              <p className="home-nav-heading" style={{ marginTop: "20px" }}>
                 Admin Tools
               </p>
               <button
                 className="home-nav-btn"
-                onClick={() => navigate("/employee-status")}
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  navigate("/employee-status");
+                }}
               >
                 Employee Status
               </button>
               <button
                 className="home-nav-btn"
-                onClick={() => navigate("/company-policies")}
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  navigate("/company-policies");
+                }}
               >
                 Company Policies
               </button>
               <button
                 className="home-nav-btn"
-                onClick={() => navigate("/employee-attendance")}
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  navigate("/employee-attendance");
+                }}
               >
                 All Attendance
               </button>
               <button
                 className="home-nav-btn"
-                onClick={() => navigate("/manage-schedule")}
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  navigate("/manage-schedule");
+                }}
               >
                 Manage Schedule
               </button>
               <button
                 className="home-nav-btn"
-                onClick={() => navigate("/manage-salary")}
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  navigate("/manage-salary");
+                }}
               >
                 Salaries & Payroll
               </button>
               <button
                 className="home-nav-btn"
-                onClick={() => navigate("/manage-leaves")}
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  navigate("/manage-leaves");
+                }}
               >
                 Leave Approvals
               </button>
@@ -502,7 +591,10 @@ function Home() {
           <div
             className="home-profile-info"
             style={{ cursor: "pointer" }}
-            onClick={() => navigate("/profile")}
+            onClick={() => {
+              setMobileMenuOpen(false);
+              navigate("/profile");
+            }}
             title="Open My Profile"
           >
             {userData.photoURL ? (
@@ -510,8 +602,8 @@ function Home() {
                 src={userData.photoURL}
                 alt={userData.name}
                 style={{
-                  width: "36px",
-                  height: "36px",
+                  width: "34px",
+                  height: "34px",
                   borderRadius: "50%",
                   objectFit: "cover",
                   border: "1.5px solid #a78bfa",
@@ -522,8 +614,15 @@ function Home() {
             )}
             <div className="home-profile-text">
               <span className="home-profile-name">{userData.name}</span>
-              <span className="home-profile-role">
-                {isAdmin ? "Admin" : "Employee"}
+              <span
+                className="home-profile-role"
+                style={
+                  isBoss
+                    ? { color: "#fde047", fontWeight: 700, letterSpacing: "0.4px" }
+                    : undefined
+                }
+              >
+                {isBoss ? "Boss" : isAdmin ? "Admin" : "Employee"}
               </span>
             </div>
           </div>
@@ -535,179 +634,106 @@ function Home() {
 
       {/* ── MAIN CONTENT ── */}
       <main className="home-main">
-        <div className="home-container">
-          <header className="home-header">
-            <div>
+        <header className="home-header">
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
               <h1>
                 {getGreeting()}, {userData.name?.split(" ")[0] || "User"}!
               </h1>
-              <p>{dateLabel}</p>
+              {isBoss && (
+                <span
+                  style={{
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    background: "rgba(250, 204, 21, 0.16)",
+                    border: "1px solid rgba(250, 204, 21, 0.45)",
+                    color: "#fde047",
+                    padding: "3px 10px",
+                    borderRadius: "999px",
+                    letterSpacing: "0.5px",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  Boss
+                </span>
+              )}
             </div>
-            {isAdmin ? (
-              <div className="home-header-stat">
-                <span className="stat-label">Estimated Payroll ({currentMonth})</span>
-                <span className="stat-value">
-                  Rs. {Math.round(totalPayroll).toLocaleString()}
-                </span>
-              </div>
-            ) : (
-              myMonthStats && (
-                <div className="home-header-stat">
-                  <span className="stat-label">My Net Salary ({currentMonth})</span>
-                  <span className="stat-value">
-                    Rs. {Math.round(myMonthStats.netSalary ?? 0).toLocaleString()}
-                  </span>
-                </div>
-              )
-            )}
-          </header>
-
-          {/* ── TOP KPI STRIP (Admin vs Employee) ── */}
-          {isAdmin ? (
-            <div className="home-kpi-grid">
-              <div className="home-kpi-card">
-                <span className="home-kpi-label">Total Staff & Payroll</span>
-                <span className="home-kpi-value">
-                  Rs. {Math.round(totalPayroll).toLocaleString()}
-                </span>
-                <span className="home-kpi-sub">
-                  Across {employees.length} active staff members
-                </span>
-              </div>
-              <div className="home-kpi-card">
-                <span className="home-kpi-label">Today's Check-ins</span>
-                <span className="home-kpi-value">
-                  {todayAtt.length} / {totalEmps}
-                </span>
-                <span className="home-kpi-sub">
-                  {onTimeCount} On Time · {lateCount} Late
-                </span>
-              </div>
-              <div className="home-kpi-card">
-                <span className="home-kpi-label">Pending Leave Requests</span>
-                <span className="home-kpi-value">{pendingLeavesCount}</span>
-                <span className="home-kpi-sub">
-                  {leaveCount} employee(s) on leave today
-                </span>
-              </div>
-              <div className="home-kpi-card">
-                <span className="home-kpi-label">Absent / Not Marked Yet</span>
-                <span className="home-kpi-value">{absentOrPending}</span>
-                <span className="home-kpi-sub">
-                  For {todayStr}
-                </span>
-              </div>
+            <p>{dateLabel}</p>
+          </div>
+          {showAdminView ? (
+            <div className="home-header-stat">
+              <span className="stat-label">Estimated Payroll ({currentMonth})</span>
+              <span className="stat-value">
+                Rs. {Math.round(totalPayroll).toLocaleString()}
+              </span>
             </div>
           ) : (
             myMonthStats && (
-              <div className="home-kpi-grid">
-                <div className="home-kpi-card">
-                  <span className="home-kpi-label">Net Payable Salary</span>
-                  <span className="home-kpi-value">
-                    Rs. {Math.round(myMonthStats.netSalary ?? 0).toLocaleString()}
-                  </span>
-                  <span className="home-kpi-sub">
-                    Base: Rs. {Math.round(Number(userData.salary) || 0).toLocaleString()}
-                  </span>
-                </div>
-                <div className="home-kpi-card">
-                  <span className="home-kpi-label">Late Arrivals ({currentMonth})</span>
-                  <span className="home-kpi-value" style={{ color: (myMonthStats.lateCount ?? 0) > 0 ? "#fde047" : "#fff" }}>
-                    {myMonthStats.lateCount ?? 0} Lates
-                  </span>
-                  <span className="home-kpi-sub">
-                    = {myMonthStats.offFromLates ?? 0} Off(s) ({myMonthStats.latesPerOff} Lates = 1 Off)
-                  </span>
-                </div>
-                <div className="home-kpi-card">
-                  <span className="home-kpi-label">Total Offs & Free Relief</span>
-                  <span className="home-kpi-value">
-                    {myMonthStats.offEquivalents ?? 0} Off(s)
-                  </span>
-                  <span className="home-kpi-sub">
-                    {myMonthStats.freeOffsAllowed ?? 2} Free Offs Allowed per month
-                  </span>
-                </div>
-                <div className="home-kpi-card">
-                  <span className="home-kpi-label">Salary Deduction (Katoti)</span>
-                  <span
-                    className="home-kpi-value"
-                    style={{
-                      color: (myMonthStats.deduction ?? 0) > 0 ? "#f87171" : "#4ade80",
-                    }}
-                  >
-                    {(myMonthStats.deduction ?? 0) > 0
-                      ? `- Rs. ${Math.round(myMonthStats.deduction).toLocaleString()}`
-                      : "Rs. 0"}
-                  </span>
-                  <span className="home-kpi-sub">
-                    {myMonthStats.deductibleOffs ?? 0} Deductible Off(s)
-                  </span>
-                </div>
+              <div className="home-header-stat">
+                <span className="stat-label">My Net Salary ({currentMonth})</span>
+                <span className="stat-value">
+                  Rs. {Math.round(myMonthStats.netSalary ?? 0).toLocaleString()}
+                </span>
               </div>
             )
           )}
+        </header>
 
-          {/* Quick Actions (Admin Only) */}
-          {isAdmin && (
-            <div className="home-quick-actions">
-              <button
-                onClick={() => navigate("/daily-attendance")}
-                className="quick-btn"
-              >
-                Mark Today's Attendance
-              </button>
-              <button
-                onClick={() => navigate("/manage-leaves")}
-                className="quick-btn"
-              >
-                Leave Approvals
-                {pendingLeavesCount > 0 && (
-                  <span className="quick-badge">{pendingLeavesCount}</span>
-                )}
-              </button>
-              <button
-                onClick={() => navigate("/manage-salary")}
-                className="quick-btn"
-              >
-                Salaries & Payroll
-              </button>
-              <button
-                onClick={() => navigate("/employee-status")}
-                className="quick-btn"
-              >
-                Employee Status
-              </button>
-              <button
-                onClick={() => navigate("/company-policies")}
-                className="quick-btn"
-              >
-                Company Policies
-              </button>
-              <button
-                onClick={() => setShowSmtpModal(true)}
-                className="quick-btn"
-                style={{
-                  borderColor: smtpConfigured
-                    ? "rgba(74, 222, 128, 0.4)"
-                    : "rgba(251, 191, 36, 0.45)",
-                }}
-              >
-                {smtpConfigured ? "Email Connected" : "Setup Email Alerts"}
-              </button>
-            </div>
-          )}
+        {/* Quick Actions (Admin Only) */}
+        {showAdminView && (
+          <div className="home-quick-actions">
+            <button
+              onClick={() => navigate("/manage-leaves")}
+              className="quick-btn"
+            >
+              Leaves
+              {pendingLeavesCount > 0 && (
+                <span className="quick-badge">{pendingLeavesCount}</span>
+              )}
+            </button>
+            <button
+              onClick={() => navigate("/daily-attendance")}
+              className="quick-btn"
+            >
+              Mark Today
+            </button>
+            <button
+              onClick={() => navigate("/manage-salary")}
+              className="quick-btn"
+            >
+              Payroll & Slips
+            </button>
+            <button
+              onClick={() => navigate("/employee-status")}
+              className="quick-btn"
+            >
+              Employee Status
+            </button>
+            <button
+              onClick={() => navigate("/company-policies")}
+              className="quick-btn"
+            >
+              Company Policies
+            </button>
+            <button
+              onClick={() => setShowSmtpModal(true)}
+              className="quick-btn"
+              style={{
+                borderColor: smtpConfigured
+                  ? "rgba(74, 222, 128, 0.4)"
+                  : "rgba(251, 191, 36, 0.45)",
+              }}
+            >
+              {smtpConfigured ? "Email Connected" : "Setup Email Alerts"}
+            </button>
+          </div>
+        )}
 
-          {/* Dashboard Widgets Grid */}
-          <div className={isAdmin ? "home-widgets-grid-admin" : "home-widgets-grid"}>
-            {isAdmin ? (
-              <div className="home-widget chart-widget">
-                <div className="widget-header">
-                  <h3>Today's Attendance Overview</h3>
-                  <span style={{ fontSize: "12px", color: "rgba(240,238,255,0.45)" }}>
-                    {todayStr}
-                  </span>
-                </div>
+        {/* Dashboard Widgets Grid */}
+        <div className="home-widgets-grid">
+          {showAdminView ? (
+            <div className="home-widget chart-widget">
+              <h3>Today's Overview</h3>
                 <div className="chart-container">
                   <div
                     className="donut-chart"
@@ -871,7 +897,7 @@ function Home() {
               </div>
             </div>
 
-            {!isAdmin && (
+            {!showAdminView && (
               <div className="home-widget upcoming-widget">
                 <div className="widget-header">
                   <h3>Punctuality & Leaves</h3>
@@ -912,7 +938,7 @@ function Home() {
           </div>
 
           {/* ── EMPLOYEE MONTHLY SALARY, LATES, OFFS & DEDUCTION DASHBOARD SECTION ── */}
-          {!isAdmin && myMonthStats && (
+          {!showAdminView && myMonthStats && (
             <section className="home-section">
               <div className="home-dir-header">
                 <h2 className="home-section-title" style={{ margin: 0 }}>
@@ -1165,7 +1191,7 @@ function Home() {
           )}
 
           {/* ── ADMIN EMPLOYEE SALARIES SECTION ── */}
-          {isAdmin && (
+          {showAdminView && (
             <section className="home-section">
               <div className="home-dir-header">
                 <h2 className="home-section-title" style={{ margin: 0 }}>
@@ -1339,7 +1365,7 @@ function Home() {
           )}
 
           {/* ── ADMIN ALL EMPLOYEES DIRECTORY ── */}
-          {isAdmin && (
+          {showAdminView && (
             <section className="home-section">
               <div className="home-dir-header">
                 <h2 className="home-section-title" style={{ margin: 0 }}>
@@ -1497,7 +1523,6 @@ function Home() {
               )}
             </section>
           )}
-        </div>
 
         {/* ── ADMIN EMAIL / SMTP SETTINGS MODAL ── */}
         {showSmtpModal && (

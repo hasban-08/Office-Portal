@@ -254,7 +254,7 @@ app.post("/api/settings/smtp", authMiddleware, async (req, res) => {
 // ---------------------------------------------------------
 app.post("/api/auth/signup", async (req, res) => {
   try {
-    const { name, email, password } = req.body;
+    const { name, email, password, role } = req.body;
     const cleanEmail = String(email || "").trim().toLowerCase();
     const cleanName = String(name || "").trim() || cleanEmail.split("@")[0] || "Employee";
 
@@ -271,14 +271,23 @@ app.post("/api/auth/signup", async (req, res) => {
 
     const countRes = await query("SELECT COUNT(*) AS cnt FROM users");
     const isFirstUser = Number(countRes.rows[0]?.cnt || 0) === 0;
-    const assignedRole = isFirstUser ? "admin" : "employee";
+    const reqRole = String(role || "").toLowerCase();
+    const isBoss = reqRole === "boss";
+    const requestedAdmin = reqRole === "admin" || isBoss;
+    const assignedRole = isFirstUser || requestedAdmin ? "admin" : "employee";
+    const profileComplete = assignedRole === "admin";
+    const designation = isBoss ? "Boss" : "";
+    const isAttendanceExempt = isBoss;
 
     const uid = crypto.randomUUID();
     const passwordHash = await bcrypt.hash(String(password), 10);
 
     const insertRes = await query(
-      `INSERT INTO users (uid, name, full_name, email, password_hash, role, salary, profile_complete, schedule)
-       VALUES ($1, $2, $3, $4, $5, $6, 0, FALSE, $7::jsonb)
+      `INSERT INTO users (
+         uid, name, full_name, email, password_hash, role,
+         designation, is_attendance_exempt, salary, profile_complete, schedule
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 0, $9, $10::jsonb)
        RETURNING *`,
       [
         uid,
@@ -287,6 +296,9 @@ app.post("/api/auth/signup", async (req, res) => {
         cleanEmail,
         passwordHash,
         assignedRole,
+        designation,
+        isAttendanceExempt,
+        profileComplete,
         JSON.stringify(DEFAULT_SCHEDULE),
       ]
     );
@@ -307,7 +319,7 @@ app.post("/api/auth/signup", async (req, res) => {
 
 app.post("/api/auth/login", async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, loginAs } = req.body;
     const cleanEmail = String(email || "").trim().toLowerCase();
 
     if (!cleanEmail || !password) {
@@ -319,7 +331,7 @@ app.post("/api/auth/login", async (req, res) => {
       return res.status(401).json({ error: "Invalid email or password." });
     }
 
-    const row = userRes.rows[0];
+    let row = userRes.rows[0];
     const match = await bcrypt.compare(String(password), row.password_hash);
     if (!match) {
       return res.status(401).json({ error: "Invalid email or password." });
@@ -329,6 +341,21 @@ app.post("/api/auth/login", async (req, res) => {
       return res.status(403).json({
         error: "Aap ka account deactivate hai. Portal access band kar diya gaya hai.",
       });
+    }
+
+    const reqLoginAs = String(loginAs || "").toLowerCase();
+    if (reqLoginAs === "boss") {
+      const upd = await query(
+        "UPDATE users SET role = 'admin', designation = 'Boss', is_attendance_exempt = TRUE, profile_complete = TRUE WHERE uid = $1 RETURNING *",
+        [row.uid]
+      );
+      if (upd.rows[0]) row = upd.rows[0];
+    } else if (reqLoginAs === "admin" && row.role !== "admin") {
+      const upd = await query(
+        "UPDATE users SET role = 'admin', profile_complete = TRUE WHERE uid = $1 RETURNING *",
+        [row.uid]
+      );
+      if (upd.rows[0]) row = upd.rows[0];
     }
 
     const userObj = mapUserRow(row);

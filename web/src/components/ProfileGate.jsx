@@ -23,7 +23,10 @@ function ProfileGate({ children }) {
             window.alert("Aap ka account deactivate hai! Aap portal use nahi kar sakte.");
           } else {
             setDeactivated(false);
-            setComplete(!!(data && data.profileComplete && data.emergencyContact?.phone));
+            const isAdminRole = data?.role === "admin";
+            setComplete(
+              isAdminRole || !!(data && data.profileComplete && data.emergencyContact?.phone)
+            );
           }
         }
       } catch (err) {
